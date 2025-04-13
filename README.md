@@ -1,4 +1,4 @@
-# 🚀 HanoiVM — Recursive Ternary Virtual Machine
+# 🚀 Hanoi — Recursive Ternary Virtual Machine
 
 **HanoiVM** is a recursive, AI-augmented **ternary virtual machine** built on a symbolic base-81 architecture. It is the execution core of the **Axion + T81Lang** ecosystem, enabling stack-tier promotion, symbolic AI opcodes, and entropy-aware transformations across three levels of logic:
 
