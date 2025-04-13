@@ -88,5 +88,3 @@ Here's a refined and updated **`STATUS.md`**, reiterating your latest provided s
 | 🧠 Symbolic AI Framework  | Intent-aware FFT, entropy-driven macros        | ✅ Expanded      | New advanced ternary operations integrated        |
 
 ---
-
-Would you like me to proceed to updating `ROADMAP.md` next?
