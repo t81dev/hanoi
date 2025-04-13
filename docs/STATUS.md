@@ -1,5 +1,3 @@
----
-
 # ✅ STATUS.md
 
 ## 📊 HanoiVM Development Status (v0.9 — March 2025)
