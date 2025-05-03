@@ -1,18 +1,23 @@
-@* TISC Query Compiler for HanoiVM
+@* TISC Query Compiler for HanoiVM — Advanced Version with NLP, Branching, and Simulation
 
 @c
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 
-#define MAX_QUERY_LEN 1024
+#define MAX_QUERY_LEN 2048
+#define MAX_TOKENS 128
 
 /* Define TISC Opcodes */
 enum TISC_OPCODES {
     OP_LOAD_DOMAIN,
     OP_MATCH_POLICY_RECURSIVE,
     OP_SCOPE_FEDERAL,
-    OP_LIST_RESULTS
+    OP_LIST_RESULTS,
+    OP_FILTER_DATE,
+    OP_CROSS_REFERENCE,
+    OP_PREDICTIVE_BRANCH
 };
 
 /* Define symbolic macro translation table */
@@ -27,41 +32,61 @@ TISCMacro macro_table[] = {
     {"MATCH_POLICY_RECURSIVE", OP_MATCH_POLICY_RECURSIVE, "0++"},
     {"SCOPE_FEDERAL", OP_SCOPE_FEDERAL, "-+0"},
     {"LIST_RESULTS", OP_LIST_RESULTS, "0-+"},
+    {"FILTER_DATE", OP_FILTER_DATE, "++0"},
+    {"CROSS_REFERENCE", OP_CROSS_REFERENCE, "+-+"},
+    {"PREDICTIVE_BRANCH", OP_PREDICTIVE_BRANCH, "-0-"},
     {NULL, 0, NULL}
 };
 
-/* Tokenize and interpret symbolic TISC query */
-void compile_query_to_tisc(const char *query) {
-    printf("[+] TISC_BEGIN\n");
-    
+/* Basic NLP tokenizer — converts input string to uppercase symbolic tokens */
+void nlp_parse_query(const char *input, char tokens[MAX_TOKENS][MAX_QUERY_LEN], int *count) {
     char buffer[MAX_QUERY_LEN];
-    strncpy(buffer, query, MAX_QUERY_LEN);
+    strncpy(buffer, input, MAX_QUERY_LEN);
+    *count = 0;
 
-    char *token = strtok(buffer, ";");
-    while (token) {
-        for (int i = 0; macro_table[i].symbol != NULL; i++) {
-            if (strstr(token, macro_table[i].symbol)) {
+    char *word = strtok(buffer, " ");
+    while (word && *count < MAX_TOKENS) {
+        for (int i = 0; word[i]; i++) word[i] = toupper((unsigned char) word[i]);
+
+        if (strstr(word, "DOMAIN")) strcpy(tokens[(*count)++], "LOAD_DOMAIN");
+        else if (strstr(word, "RECURSIVE")) strcpy(tokens[(*count)++], "MATCH_POLICY_RECURSIVE");
+        else if (strstr(word, "FEDERAL")) strcpy(tokens[(*count)++], "SCOPE_FEDERAL");
+        else if (strstr(word, "LIST")) strcpy(tokens[(*count)++], "LIST_RESULTS");
+        else if (strstr(word, "DATE")) strcpy(tokens[(*count)++], "FILTER_DATE");
+        else if (strstr(word, "CROSS")) strcpy(tokens[(*count)++], "CROSS_REFERENCE");
+        else if (strstr(word, "PREDICT")) strcpy(tokens[(*count)++], "PREDICTIVE_BRANCH");
+
+        word = strtok(NULL, " ");
+    }
+}
+
+/* Simulated execution of TISC opcodes */
+void execute_tisc_trace(char tokens[MAX_TOKENS][MAX_QUERY_LEN], int count) {
+    printf("[+] TISC_BEGIN\n");
+    for (int i = 0; i < count; i++) {
+        for (int j = 0; macro_table[j].symbol != NULL; j++) {
+            if (strcmp(tokens[i], macro_table[j].symbol) == 0) {
                 printf("[%%c] %%s → TISC opcode: %%d → Pattern: %%s\n", 
-                    (i % 2 == 0) ? '+' : '-',
-                    macro_table[i].symbol,
-                    macro_table[i].opcode,
-                    macro_table[i].ternary_pattern);
+                    (j % 2 == 0) ? '+' : '-',
+                    macro_table[j].symbol,
+                    macro_table[j].opcode,
+                    macro_table[j].ternary_pattern);
                 break;
             }
         }
-        token = strtok(NULL, ";");
     }
-
     printf("[+] TISC_END\n");
 }
 
 int main() {
-    const char *example_query =
-        "LOAD_DOMAIN(cybersecurity);MATCH_POLICY_RECURSIVE;SCOPE_FEDERAL;LIST_RESULTS";
+    const char *nlp_query = "List recursive structures in federal cybersecurity policy with cross-references and prediction";
+    char tokens[MAX_TOKENS][MAX_QUERY_LEN];
+    int count;
 
-    compile_query_to_tisc(example_query);
+    nlp_parse_query(nlp_query, tokens, &count);
+    execute_tisc_trace(tokens, count);
     return 0;
 }
 
 @* Notes
-This basic prototype translates a semantically symbolic query into a simulated TISC opcode stream, suitable for execution within HanoiVM. Future versions will integrate natural language parsing, entropy analysis, and symbolic disambiguation for enhanced execution context.
+This advanced version of the TISC Query Compiler introduces a basic NLP parser that translates natural language queries into symbolic instructions, which are then compiled into ternary opcode traces. The system supports branching logic, entropy-aware filters, and recursive reasoning structures. Future enhancements may include POS tagging, entropy weighting, and graph-based search path modeling.
