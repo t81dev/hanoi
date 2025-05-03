@@ -1,4 +1,4 @@
-# TODO.md — Build a Search Engine to Compete with Google
+# TODO.md — Build a Search Engine to Compete with Google©
 
 ## 🚀 Vision
 
