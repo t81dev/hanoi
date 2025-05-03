@@ -2,7 +2,7 @@
 
 ## 🚀 Vision
 
-Our goal is to create an AI-powered search engine that surpasses Google's search capabilities, with a focus on ternary logic, deep recursion, symbolic computation, and entropy-aware AI to offer more accurate, efficient, and insightful results. (Think!) // IBM© Quantum Computing Co-processer.
+Our goal is to create an AI-powered search engine that surpasses Google's search capabilities, with a focus on ternary logic, deep recursion, symbolic computation, and entropy-aware AI to offer more accurate, efficient, and insightful results. | Think IBM© Quantum Co-processer.
 
 ### Key Features
 
