@@ -188,9 +188,13 @@ bazel run //:recursive_tier_execution -- --max-depth=36
 ✅ 3D visualizer: `FrameSceneBuilder.cweb` + `PulseControl`
 
 🔜 TISC query compiler with entropy scoring
+
 🔜 Live REPL for `.t81` to `.hvm`
+
 🔜 LLVM IR export for hybrid backend
+
 🔜 Axion log streaming in Looking Glass
+
 
 ---
 
