@@ -39,7 +39,7 @@ Our goal is to create an AI-powered search engine that surpasses Google's search
   * Implement **Axion AI** to predict user intent, suggest relevant searches, and personalize results.
   * Leverage **symbolic computation** to provide deeper insights into the search results.
 
-🧠 Sidebar Thread: TISC Query Compiler for Competitive Search Computing
+* **🧠 Sidebar Thread: TISC Query Compiler for Competitive Search Computing**
 
 🔍 Concept:
 
