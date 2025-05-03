@@ -153,5 +153,6 @@ t81lang_parser.cweb          | Parser for generating AST structures
 tisc_backend.cweb            | Compiler backend IR emitter for `.tisc` to `.hvm`
 tisc_compiler.cweb           | Frontend compiler logic for `.tisc` language
 tisc_ir.cweb                 | TISC intermediate representation structures
+tisc_query_compiler.cweb     | TISC translates user queries—nlp or symbolic
 tisc_stdlib.cweb             | Standard library for TISC symbolic logic
 write_simple_add.cweb        | Simple ternary arithmetic example program
