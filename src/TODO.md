@@ -39,6 +39,42 @@ Our goal is to create an AI-powered search engine that surpasses Google's search
   * Implement **Axion AI** to predict user intent, suggest relevant searches, and personalize results.
   * Leverage **symbolic computation** to provide deeper insights into the search results.
 
+🧠 Sidebar Thread: TISC Query Compiler for Competitive Search Computing
+
+🔍 Concept:
+
+TISC Query Compiler translates natural-language or symbolic queries into Ternary Instruction Set Computing (TISC) bytecode or ops. Instead of returning a flat ranked list like traditional search engines (e.g. Google), the system evaluates queries recursively through the ternary stack—using symbolic inference, entropy scoring, and dynamic type unfolding via T81 structures.
+
+🧩 Integration Points:
+
+-T81Lang Frontend → Parses user query.
+-TISC Query IR → Compiles it into a sequence of symbolic ternary ops.
+-HanoiVM Stack → Executes compiled query over recursive data structures (e.g., T81Graph, T81Trie, T81NeuralMap, etc.).
+-Entropy-aware Ranking → Uses state entropy of execution to prioritize meaningful results (not just keyword density).
+-Stack-aware Feedback Loop → Supports iterative refinement: every query execution mutates the stack state for adaptive context-aware follow-up.
+
+🔧 Sample Flow (Mental Model):
+
+User Query: "Who invented ternary computing?"
+
+↓
+Parsed → ["Who", "invented", "ternary", "computing"]
+↓
+Mapped → TISC Ops: [OP_LOOKUP, OP_CAUSAL_TRACE, OP_TAG("ternary"), OP_TAG("computing")]
+↓
+Executed by HanoiVM:
+    → Loads relevant nodes from T81Graph
+    → Traverses causality via T81NeuralMap
+    → Scores results using entropy heuristics
+↓
+Returns:
+    → Ranked answer blocks + TISC trace tree + mutation potential
+🛡️ Competitive Advantages:
+
+Not keyword-matching; it's stack-inferred cognition.
+Supports query synthesis (i.e., completing your question recursively).
+Executes like an AI-native virtual researcher, not a web crawler.
+
 ---
 
 ## 📅 Milestones
