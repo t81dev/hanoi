@@ -1,0 +1,67 @@
+@* TISC Query Compiler for HanoiVM
+
+@c
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define MAX_QUERY_LEN 1024
+
+/* Define TISC Opcodes */
+enum TISC_OPCODES {
+    OP_LOAD_DOMAIN,
+    OP_MATCH_POLICY_RECURSIVE,
+    OP_SCOPE_FEDERAL,
+    OP_LIST_RESULTS
+};
+
+/* Define symbolic macro translation table */
+typedef struct {
+    const char *symbol;
+    enum TISC_OPCODES opcode;
+    const char *ternary_pattern;
+} TISCMacro;
+
+TISCMacro macro_table[] = {
+    {"LOAD_DOMAIN", OP_LOAD_DOMAIN, "+0-"},
+    {"MATCH_POLICY_RECURSIVE", OP_MATCH_POLICY_RECURSIVE, "0++"},
+    {"SCOPE_FEDERAL", OP_SCOPE_FEDERAL, "-+0"},
+    {"LIST_RESULTS", OP_LIST_RESULTS, "0-+"},
+    {NULL, 0, NULL}
+};
+
+/* Tokenize and interpret symbolic TISC query */
+void compile_query_to_tisc(const char *query) {
+    printf("[+] TISC_BEGIN\n");
+    
+    char buffer[MAX_QUERY_LEN];
+    strncpy(buffer, query, MAX_QUERY_LEN);
+
+    char *token = strtok(buffer, ";");
+    while (token) {
+        for (int i = 0; macro_table[i].symbol != NULL; i++) {
+            if (strstr(token, macro_table[i].symbol)) {
+                printf("[%%c] %%s → TISC opcode: %%d → Pattern: %%s\n", 
+                    (i % 2 == 0) ? '+' : '-',
+                    macro_table[i].symbol,
+                    macro_table[i].opcode,
+                    macro_table[i].ternary_pattern);
+                break;
+            }
+        }
+        token = strtok(NULL, ";");
+    }
+
+    printf("[+] TISC_END\n");
+}
+
+int main() {
+    const char *example_query =
+        "LOAD_DOMAIN(cybersecurity);MATCH_POLICY_RECURSIVE;SCOPE_FEDERAL;LIST_RESULTS";
+
+    compile_query_to_tisc(example_query);
+    return 0;
+}
+
+@* Notes
+This basic prototype translates a semantically symbolic query into a simulated TISC opcode stream, suitable for execution within HanoiVM. Future versions will integrate natural language parsing, entropy analysis, and symbolic disambiguation for enhanced execution context.
