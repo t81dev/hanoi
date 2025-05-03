@@ -1,8 +1,4 @@
-Here's the **updated and refined `ROADMAP.md`**, integrating your latest developments and emphasizing clear next steps for optimal synergy:
-
----
-
-# 🗺️ HanoiVM — Project Roadmap | Copyleft Systems
+# 🗺️ HanoiVM — Project Roadmap
 
 **HanoiVM** is a recursive, AI-augmented ternary virtual machine supporting the execution of symbolic logic across the `T81`, `T243`, and `T729` logic layers. It anchors the **T81Lang**, **Axion AI**, and **Alexis Linux** ecosystems, focused on symbolic computation, entropy-aware logic, and AI-accelerated programming.
 
