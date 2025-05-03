@@ -168,15 +168,25 @@ bazel run //:recursive_tier_execution -- --max-depth=36
 ## 📈 Project Status
 
 ✅ Recursive execution engine
+
 ✅ Literate `.cweb` modular design
+
 ✅ Full symbolic tier stack (T81 → T243 → T729)
+
 ✅ Pattern dispatch and entropy signal handling
+
 ✅ Axion AI integration with rollback and NLP
+
 ✅ GPU offload (HIP + CUDA) for symbolic macros
+
 ✅ Verbose `.hvm` disassembler and type introspection
+
 ✅ Kernel-level testing (`debugfs`)
+
 ✅ `.t81viz` recursion trace export
+
 ✅ 3D visualizer: `FrameSceneBuilder.cweb` + `PulseControl`
+
 🔜 TISC query compiler with entropy scoring
 🔜 Live REPL for `.t81` to `.hvm`
 🔜 LLVM IR export for hybrid backend
