@@ -1,0 +1,210 @@
+@* config_.cweb | HanoiVM Module Configuration (with TISC Query Compiler Support)
+
+This file defines the global configuration settings for the HanoiVM project, including the TISC Query Compiler subsystem.
+All components will read these settings to ensure consistent behavior across the system,
+while enabling dynamic AI, hardware-driven optimizations, and TISC query parsing for recursive instruction dispatch.
+
+---
+
+@<Hardware Configuration@>=
+
+// Configuration Versioning
+#define HANOIVM_CONFIG_VERSION  "0.9"
+
+// Platform Target Flags
+#define TARGET_LLVM_BACKEND
+#define TARGET_CUDA_ENABLED
+#define TARGET_TISC_QUERY_COMPILER
+
+## Hardware Configuration
+
+#define ENABLE_PCIE_ACCELERATION   true
+#define ENABLE_GPU_SUPPORT         true
+#define ENABLE_DYNAMIC_RESOURCE_SCALING true
+
+---
+
+@<AI Configuration@>=
+## AI Configuration
+
+#define AI_OPTIMIZATION_MODE       "Advanced"
+#define ENABLE_ANOMALY_DETECTION   true
+#define ENABLE_AI_LOG_FEEDBACK     true
+
+---
+
+@<Logging Configuration@>=
+## Logging Configuration
+
+#define LOG_LEVEL                  "INFO"
+#define LOG_OUTPUT_FORMAT          "TEXT"
+#define ENABLE_SECURE_MODE         true
+
+---
+
+@<Resource Management@>=
+## Resource Management
+
+#define MEMORY_ALLOCATION          4096
+#define CPU_AFFINITY               "0,1,2,3"
+#define GPU_ALLOCATION             4096
+#define ENABLE_RUNTIME_OVERRIDES   true
+
+---
+
+@<Environment Detection@>=
+## Environment Detection
+
+#define DETECT_GPU                 true
+#define DETECT_PCIE_ACCELERATOR    true
+
+---
+
+@<Global Settings@>=
+## Global Settings
+
+#define TERNARY_LOGIC_MODE         "T81"
+#define ENABLE_ADAPTIVE_MODE_SWITCHING true
+#define ENABLE_DEBUG_MODE          true
+
+---
+
+@<TISC Query Compiler Configuration@>=
+## TISC Query Compiler
+
+#define ENABLE_TISC_QUERY_COMPILER       true
+#define TISC_QUERY_MAX_DEPTH             81
+#define TISC_QUERY_TIMEOUT_MS            500
+#define TISC_LOG_QUERY_RESULTS           true
+#define TISC_ENABLE_CACHED_DISPATCH      true
+
+---
+
+@<Runtime Configuration Parser@>=
+## Runtime Configuration Parser
+
+@c
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdbool.h>
+
+// Define configuration structure
+typedef struct {
+
+    // AI Integration Settings
+    bool enable_axion_core;
+    int symbolic_threshold;
+    char recursion_model[32];
+
+    // Logging Levels
+    typedef enum {
+        LOG_NONE,
+        LOG_ERROR,
+        LOG_WARN,
+        LOG_INFO,
+        LOG_DEBUG
+    } LogLevel;
+
+    LogLevel current_log_level;
+
+    bool enable_pcie_acceleration;
+    bool enable_gpu_support;
+    bool enable_dynamic_resource_scaling;
+
+    char ai_optimization_mode[16];
+    bool enable_anomaly_detection;
+    bool enable_ai_log_feedback;
+
+    char log_level[8];
+    char log_output_format[8];
+    bool enable_secure_mode;
+
+    int memory_allocation;
+    char cpu_affinity[32];
+    int gpu_allocation;
+    bool enable_runtime_overrides;
+
+    bool detect_gpu;
+    bool detect_pcie_accelerator;
+
+    char ternary_logic_mode[8];
+    bool enable_adaptive_mode_switching;
+    bool enable_debug_mode;
+
+    // TISC Query Compiler
+    bool enable_tisc_query_compiler;
+    int tisc_query_max_depth;
+    int tisc_query_timeout_ms;
+    bool tisc_log_query_results;
+    bool tisc_enable_cached_dispatch;
+
+} HanoiVMConfig;
+
+// Initialize default configuration
+HanoiVMConfig default_config() {
+    HanoiVMConfig cfg = {
+        .enable_pcie_acceleration = ENABLE_PCIE_ACCELERATION,
+        .enable_gpu_support = ENABLE_GPU_SUPPORT,
+        .enable_dynamic_resource_scaling = ENABLE_DYNAMIC_RESOURCE_SCALING,
+
+        .ai_optimization_mode = AI_OPTIMIZATION_MODE,
+        .enable_anomaly_detection = ENABLE_ANOMALY_DETECTION,
+        .enable_ai_log_feedback = ENABLE_AI_LOG_FEEDBACK,
+
+        .log_level = LOG_LEVEL,
+        .log_output_format = LOG_OUTPUT_FORMAT,
+        .enable_secure_mode = ENABLE_SECURE_MODE,
+
+        .memory_allocation = MEMORY_ALLOCATION,
+        .cpu_affinity = CPU_AFFINITY,
+        .gpu_allocation = GPU_ALLOCATION,
+        .enable_runtime_overrides = ENABLE_RUNTIME_OVERRIDES,
+
+        .detect_gpu = DETECT_GPU,
+        .detect_pcie_accelerator = DETECT_PCIE_ACCELERATOR,
+
+        .ternary_logic_mode = TERNARY_LOGIC_MODE,
+        .enable_adaptive_mode_switching = ENABLE_ADAPTIVE_MODE_SWITCHING,
+        .enable_debug_mode = ENABLE_DEBUG_MODE,
+
+        .enable_tisc_query_compiler = ENABLE_TISC_QUERY_COMPILER,
+        .tisc_query_max_depth = TISC_QUERY_MAX_DEPTH,
+        .tisc_query_timeout_ms = TISC_QUERY_TIMEOUT_MS,
+        .tisc_log_query_results = TISC_LOG_QUERY_RESULTS,
+        .tisc_enable_cached_dispatch = TISC_ENABLE_CACHED_DISPATCH
+    };
+    return cfg;
+}
+
+void apply_env_overrides(HanoiVMConfig* cfg) {
+    const char* mode = getenv("HVM_MODE");
+    if (mode) strncpy(cfg->ternary_logic_mode, mode, sizeof(cfg->ternary_logic_mode));
+
+    const char* log_level = getenv("HVM_LOG_LEVEL");
+    if (log_level) strncpy(cfg->log_level, log_level, sizeof(cfg->log_level));
+
+    const char* affinity = getenv("HVM_CPU_AFFINITY");
+    if (affinity) strncpy(cfg->cpu_affinity, affinity, sizeof(cfg->cpu_affinity));
+}
+
+void print_config(const HanoiVMConfig* cfg) {
+    printf("=== HanoiVM Runtime Configuration ===\n");
+    printf("PCIe Acceleration: %s\n", cfg->enable_pcie_acceleration ? "Enabled" : "Disabled");
+    printf("GPU Support: %s\n", cfg->enable_gpu_support ? "Enabled" : "Disabled");
+    printf("AI Optimization: %s\n", cfg->ai_optimization_mode);
+    printf("TISC Query Compiler: %s\n", cfg->enable_tisc_query_compiler ? "Enabled" : "Disabled");
+    printf("Ternary Mode: %s\n", cfg->ternary_logic_mode);
+    printf("Memory: %d MB | GPU: %d MB\n", cfg->memory_allocation, cfg->gpu_allocation);
+    printf("CPU Affinity: %s\n", cfg->cpu_affinity);
+    printf("=====================================\n");
+}
+
+int main() {
+    HanoiVMConfig cfg = default_config();
+    if (cfg.enable_runtime_overrides) apply_env_overrides(&cfg);
+    if (cfg.enable_debug_mode) print_config(&cfg);
+    return 0;
+}
+
+@* End of config_.cweb
