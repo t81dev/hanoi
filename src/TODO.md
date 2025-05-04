@@ -1,149 +1,149 @@
-# TODO.md — Build a Search Engine to Compete with Google©
+# ✅ `TODO.md` — Build a Ternary-Stack Search Engine to Compete with Google©
 
 ## 🚀 Vision
 
-Our goal is to create an AI-powered search engine that surpasses Google's search capabilities, with a focus on ternary logic, deep recursion, symbolic computation, and entropy-aware AI to offer more accurate, efficient, and insightful results. | Think IBM© Quantum Co-processer.
+**Build a next-gen, AI-powered search engine that outperforms Google** by leveraging ternary logic, symbolic computation, recursion-aware execution, and entropy-based ranking. Where others index documents, we simulate cognition.
 
-### Key Features
+**Goal:** Create a cognitive co-processor for search – think *IBM© Quantum* meets *Symbolic Web Search*.
 
-* **Ternary Search Algorithm**: Implement search algorithms based on ternary computing for increased performance and scalability.
-* **AI-Powered Query Understanding**: Use Axion AI for interpreting search queries and providing context-aware results.
-* **Symbolic Search**: Incorporate symbolic computation to enhance relevance ranking, utilizing the T243 and T729 tiers for deep semantic understanding.
-* **Recursive Data Structures**: Use recursive structures for indexing and searching, optimizing for dynamic updates and real-time results.
-* **Optimization Algorithms**: Enhance ranking and retrieval using AI-based optimization strategies.
+---
+
+## ✨ Key Features
+
+* **Ternary Search Engine Core**
+  Harness ternary logic (T81/T243/T729 tiers) for symbolic, recursive, and context-aware query execution.
+
+* **Symbolic + Neural Query Resolution**
+  Combine structured symbolic logic (TISC) with Axion AI-driven tensor-level analysis and embeddings.
+
+* **Entropy-Aware Ranking**
+  Use entropy heuristics to prioritize insightful answers over popular or keyword-dense ones.
+
+* **Stack-Mutating Feedback Loop**
+  Every query mutates HanoiVM’s ternary stack, allowing dynamic refinement and recursive context propagation.
+
+* **Explainable Query Trace**
+  Each query returns not only answers, but an executable TISC tree and mutation delta for introspection or re-execution.
 
 ---
 
 ## 🧠 System Architecture
 
-* **Data Layer**
+### 🗃️ Data Layer
 
-  * Implement an **AI-powered crawler** (recursive, symbolic) using T81Graph and T81Tensor data types.
-  * **Indexing** system based on dynamic ternary structures.
-  * Integration with **HanoiVM** for symbolic data storage and retrieval.
+* [ ] Ternary-native crawler (`T81Crawler`) using symbolic recursion (e.g., `T81Graph`, `T81Trie`, `T81Tensor`)
+* [ ] Symbolic index system using tier-aware structures
+* [ ] `.t81db` — composable, entropy-indexed file format for local/offline inference
 
-* **Search Engine Core**
+### 🔍 Search Engine Core
 
-  * **Query Parsing**: Use natural language processing (NLP) for query analysis (e.g., named entity recognition, dependency parsing).
-  * **Ternary Search Optimization**: Develop a recursive ternary search algorithm tailored for handling large-scale datasets and high-frequency queries.
-  * **Result Ranking**: Use AI-driven ranking algorithms, optimized for ternary logic execution.
+* [x] **T81Lang**: High-level ternary query language with symbolic and AI macros
+* [x] **TISC Compiler**: Compiles symbolic queries to ternary bytecode
+* [x] **HanoiVM**: Executes TISC code with recursive stack state
+* [x] **Entropy Evaluation**: Score search paths and result states by information gain
+* [x] **Feedback Loop**: Queries auto-refine via recursive stack tracing + entropy convergence
 
-* **Frontend Interface**
+### 🧠 AI & Symbolic Integration
 
-  * **Minimalist UI**: Dynamic, AI-generated UI that adapts to user preferences and query history.
-  * **Customizable Filters**: Provide advanced filtering options for search results (e.g., by time, type, domain).
-  * **Search History**: Use recursive graphs to display and analyze search history in context.
+* [x] Axion AI for prediction, context expansion, rollback, and ranking
+* [x] Tensor-based embeddings (via `T729Intent`, `T729Tensor`, etc.)
+* [ ] Integration with `T81NeuralMap` for conceptual space navigation
 
-* **AI Integration**
+### 💻 Frontend + UX
 
-  * Implement **Axion AI** to predict user intent, suggest relevant searches, and personalize results.
-  * Leverage **symbolic computation** to provide deeper insights into the search results.
+* [ ] Responsive, minimalist frontend
+* [ ] AI-curated filter/suggestion panel
+* [ ] Search Tree visualizer for `TISC` trace & entropy heatmap
+* [ ] Search history modeled as a `T81Graph`
 
-* **🧠 Sidebar Thread: TISC Query Compiler for Competitive Search Computing**
+---
 
-  * 🔍 Concept: TISC Query Compiler translates natural-language or symbolic queries into Ternary Instruction Set Computing (TISC) bytecode or ops. Instead of returning a flat ranked list like traditional search engines (e.g. Google), the system evaluates queries recursively through the ternary stack—using symbolic inference, entropy scoring, and dynamic type unfolding via T81 structures.
+## 🧬 Query Flow Summary
 
+```markdown
+User Input → T81Lang → TISC IR → HanoiVM Execution
+           → T81Graph / T81Trie → Entropy Scoring
+           → Stack Feedback → Adaptive Recompile (if needed)
+           → Ranked Results + TISC Trace Output
+```
 
-   * 🧩 Integration Points:
+### 🧠 Example Query Walkthrough
 
-     *T81Lang Frontend → Parses user query.
-     *TISC Query IR → Compiles it into a sequence of symbolic ternary ops.
-     *HanoiVM Stack → Executes compiled query over recursive data structures (e.g., T81Graph, T81Trie, T81NeuralMap, etc.).
-     *Entropy-aware Ranking → Uses state entropy of execution to prioritize meaningful results (not just keyword density).
-     *Stack-aware Feedback Loop → Supports iterative refinement: every query execution mutates the stack state for adaptive context-aware follow-up.
+> "Who invented ternary computing?"
 
+```text
+→ Tokenized: ["Who", "invented", "ternary", "computing"]
+→ Mapped to TISC:
+   [OP_LOOKUP, OP_CAUSAL_TRACE, OP_TAG("ternary"), OP_TAG("computing")]
 
-🔧 Sample Flow (Mental Model):
+→ Executed in HanoiVM:
+   - Traverses `T81Graph` for cause-effect nodes
+   - Loads semantic space from `T81NeuralMap`
+   - Scores each path based on entropy delta
 
-User Query: "Who invented ternary computing?"
-
-↓
-
-Parsed → ["Who", "invented", "ternary", "computing"]
-
-↓
-
-Mapped → TISC Ops: [OP_LOOKUP, OP_CAUSAL_TRACE, OP_TAG("ternary"), OP_TAG("computing")]
-
-↓
-
-Executed by HanoiVM:
-
-    → Loads relevant nodes from T81Graph
-    
-    → Traverses causality via T81NeuralMap
-    
-    → Scores results using entropy heuristics
-
-↓
-
-Returns:
-
-    → Ranked answer blocks + TISC trace tree + mutation potential
-
-
-**🛡️ Competitive Advantages**:
-
-Not keyword-matching; it's stack-inferred cognition.
-Supports query synthesis (i.e., completing your question recursively).
-Executes like an AI-native virtual researcher, not a web crawler.
+→ Result:
+   - Ranked answers
+   - Mutation trace tree
+   - Next-step prediction (`TISC` suggestion delta)
+```
 
 ---
 
 ## 📅 Milestones
 
-### Phase 1: Research & Planning
+### ✅ Phase 1: Planning & Theoretical Model
 
-* [ ] Conduct a **market analysis** of current search engines (e.g., Google, Bing).
-* [ ] Research AI-driven query parsing and symbolic search models.
-* [ ] Analyze the technical requirements for a **ternary search engine**.
+✔️ Complete T81Lang/TISC/HanoiVM stack definition
+✔️ Finalize entropy-based feedback loop
+✔️ Submit proposal to federal authorities (e.g., CISA)
 
-### Phase 2: Core System Development
+### 🚧 Phase 2: Core Stack Development
 
-* [ ] Design and develop the **AI-powered crawler**.
-* [ ] Implement the **indexing system** based on T81 data types (e.g., T81Graph, T81Matrix).
-* [ ] Develop the **ternary search algorithm** using recursive data structures.
-* [ ] Integrate **Axion AI** for query parsing and result ranking.
+\[ ] Finalize T81NeuralMap & symbolic Trie indexing
+\[ ] Optimize HanoiVM stack mutation & rollback logic
+\[ ] Develop TISC-query REPL and live trace debugger
 
-### Phase 3: UI/UX Development
+### 🚧 Phase 3: Search Engine Integration
 
-* [ ] Design a **responsive UI** that adapts based on user behavior and preferences.
-* [ ] Implement a **dynamic search bar** with NLP-based query suggestions.
-* [ ] Create an **intuitive results page** that shows relevant search results, enriched with AI-driven insights.
+\[ ] Develop T81Crawler + `.t81db` symbolic dump format
+\[ ] Connect indexing to live Axion AI ranking
+\[ ] Enable query refinement via context stack rehydration
 
-### Phase 4: Performance Optimization
+### 🚧 Phase 4: UI / Interface
 
-* [ ] Implement **GPU acceleration** for symbolic computation and query processing.
-* [ ] Fine-tune **ternary logic optimizations** to reduce latency in query handling.
-* [ ] Implement **advanced indexing strategies** to optimize result retrieval times.
+\[ ] Build AI-minimalist web UI (React or SwiftUI)
+\[ ] Add entropy graph and symbolic path viewer
+\[ ] Log search sessions into searchable T81Graph nodes
 
-### Phase 5: Testing & Validation
+### 🚧 Phase 5: Performance & Scaling
 
-* [ ] Conduct **unit testing** on the ternary search algorithms.
-* [ ] Perform **A/B testing** for result ranking and query interpretation.
-* [ ] Run **load tests** to ensure scalability for high traffic volumes.
-
-### Phase 6: Deployment & Scaling
-
-* [ ] Deploy on **cloud infrastructure** for global reach and scalability.
-* [ ] Set up **continuous deployment** pipelines for regular updates and improvements.
-* [ ] Integrate **multi-language support** for global users.
+\[ ] GPU-accelerated symbolic matrix ops (e.g. `T729Tensor`)
+\[ ] Tier-aware caching of common `TISC` fragments
+\[ ] Plan for deployment on FPGA / M.2 for low-latency edge inference
 
 ---
 
-## 🛠️ Tools & Technologies
+## 🛠️ Technologies in Use
 
-* **HanoiVM**: Core virtual machine for handling recursive, ternary-based computations.
-* **Axion AI**: AI-powered query understanding and result ranking.
-* **T81Lang**: Ternary instruction set and language for symbolic computation.
-* **TensorFlow/PyTorch**: Machine learning frameworks for training AI models.
-* **Apache Spark**: Big data processing framework for indexing and searching large-scale datasets.
+| Tool / Library    | Purpose                                    |
+| ----------------- | ------------------------------------------ |
+| **HanoiVM**       | Recursive ternary stack engine             |
+| **T81Lang**       | Query language & symbolic logic framework  |
+| **Axion AI**      | Entropy-aware AI query optimizer           |
+| **LLVM + .cweb**  | Compiler backend + literate documentation  |
+| **CUDA/ROCm**     | Symbolic GPU acceleration (T729Tensor ops) |
+| **Bazel + CI**    | Deterministic build & test pipeline        |
+| **REPL + Tracer** | Developer loop for live `TISC` editing     |
 
 ---
 
-## 🚧 Open Issues & Future Work
+## 🧪 Future Work
 
-* [ ] Explore **quantum computing** for enhancing search speed and accuracy.
-* [ ] Investigate **blockchain** integration for decentralized search results (user-generated content verification).
-* [ ] Develop **privacy-focused features** to allow users to search without tracking.
-* [ ] Continuously improve \*\*
+* [ ] Quantum-ready ternary IR interpreter
+* [ ] Blockchain-backed knowledge verification (i.e., verified search graph fragments)
+* [ ] Multi-agent query synthesis: queries that recursively spawn child questions
+* [ ] Public `.t81hub` for decentralized contribution of trie/graph snippets
+
+---
+
+Would you like this saved as `TODO.md`, or should I package it with the current repo archive for download?
