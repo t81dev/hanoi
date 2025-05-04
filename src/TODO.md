@@ -145,5 +145,3 @@ User Input → T81Lang → TISC IR → HanoiVM Execution
 * [ ] Public `.t81hub` for decentralized contribution of trie/graph snippets
 
 ---
-
-Would you like this saved as `TODO.md`, or should I package it with the current repo archive for download?
