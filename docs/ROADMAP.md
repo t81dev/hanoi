@@ -112,9 +112,9 @@
 
 ## 🔗 Related Ecosystem Projects
 
-* [Alexis Linux](https://github.com/copyl-sys) — AI-native modular OS
-* [T81Lang](https://github.com/copyl-sys) — Symbolic ternary programming language
-* [Axion AI](https://github.com/copyl-sys) — Kernel-level optimization AI
+* [Alexis Linux] — AI-native modular OS
+* [T81Lang] — Symbolic ternary programming language
+* [Axion AI] — Kernel-level optimization AI
 * **Project Looking Glass** — 3D symbolic recursion and state visualizer
 
 ---
@@ -130,10 +130,5 @@
 * ✅ Axion AI fully integrated with kernel-level entropy-driven logic
 * ✅ GPU acceleration active (CUDA/ROCm) with symbolic FFT
 * ✅ Advanced developer tools and recursion visualization complete
-* 🔜 Immediate Next Focus: GPU graph pipelines, Looking Glass UI enhancements, LLVM IR optimization pipeline, and semantic query-to-TISC compiler
-
----
-
-This roadmap reflects the current progress and future plans for the HanoiVM project, ensuring alignment with the repository's state and ongoing developments.
-
----
+* 🔜 Immediate Next Focus: GPU graph pipelines, Looking Glass UI enhancements, LLVM IR optimization pipeline,
+* and semantic query-to-TISC compiler
