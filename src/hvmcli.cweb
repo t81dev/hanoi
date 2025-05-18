@@ -1,4 +1,4 @@
-@* cvmcli.cweb | Userspace Interface to Send .hvm Opcodes to /dev/hvm0 with Enhanced Options *@
+@* hvmcli.cweb | Userspace Interface to Send .hvm Opcodes to /dev/hvm0 with Enhanced Options *@
 
 @c
 #include <stdio.h>
