@@ -1,6 +1,6 @@
 # 🗺️ HanoiVM — Project Roadmap
 
-**HanoiVM** is a recursive, AI-augmented ternary virtual machine supporting the execution of symbolic logic across the `T81`, `T243`, and `T729` logic layers. It anchors the **T81Lang**, **Axion AI**, and **Alexis Linux** ecosystems, focused on symbolic computation, entropy-aware logic, and AI-accelerated programming.
+**HanoiVM** is a recursive, AI-augmented ternary virtual machine supporting the execution of symbolic logic across the `T81`, `T243`, and `T729` logic layers. It anchors the **T81Lang**, **Axion AI**, and **Alexis Linux** ecosystems, focusing on symbolic computation, entropy-aware logic, and AI-accelerated programming.
 
 ---
 
@@ -131,3 +131,9 @@
 * ✅ GPU acceleration active (CUDA/ROCm) with symbolic FFT
 * ✅ Advanced developer tools and recursion visualization complete
 * 🔜 Immediate Next Focus: GPU graph pipelines, Looking Glass UI enhancements, LLVM IR optimization pipeline, and semantic query-to-TISC compiler
+
+---
+
+This roadmap reflects the current progress and future plans for the HanoiVM project, ensuring alignment with the repository's state and ongoing developments.
+
+---
