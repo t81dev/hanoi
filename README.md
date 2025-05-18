@@ -9,40 +9,46 @@
 Designed for research, language development, and future ternary hardware acceleration, **Hanoi** is literate, modular, and fully recursive.
 
 Join us as we move beyond binary. Explore the power of HanoiVM.
+
 ---
 
 ## 🔍 Core Features
 
 * 🔢 **Ternary Operand Architecture**:
-
   * Supports `uint81_t`, `T243BigInt`, and `T729Tensor` data types
+
 * 🌀 **Recursive Stack Tiering**:
-
   * Auto-promotes through `T81 → T243 → T729` based on depth/entropy
-* 🧠 **Symbolic AI Execution**:
 
+* 🧠 **Symbolic AI Execution**:
   * Includes FSM logic, pattern recognition, entropy-driven dispatch
   * AI macros: `TNN_ACCUM`, `T81_MATMUL`, `T729Intent`, `T729MetaOpcode`
+
 * 🧬 **Tensor Engine + Holomorphic Support**:
-
   * `DOT`, `SLICE`, `TRANSPOSE`, `RESHAPE`, `CLONE`, `PRINT`, `FFT`
-* ⚙️ **Axion Kernel AI**:
 
+* ⚙️ **Axion Kernel AI**:
   * AI introspection + rollback via NLP-style commands (`optimize`, `snapshot`)
   * Integrated Axion telemetry, logs, entropy weighting
-* ⚡ **GPU Acceleration via GAIA**:
 
+* ⚡ **GPU Acceleration via GAIA**:
   * AMD: `gaia_handle_request.cweb` (HIP)
   * NVIDIA: `cuda_handle_request.cu` (CUDA)
-* 🖼️ **3D Visualization via Looking Glass**:
 
+* 🖼️ **3D Visualization via Looking Glass**:
   * `FrameSceneBuilder.cweb` renders recursion traces in jMonkeyEngine
   * Axion overlays, ternary geometry, and entropy pulse animation
+
+* 🔐 **Secure Trace Export**:
+  * `recursion_exporter.cweb` + `nist_encryption.cweb` for audit-safe symbolic traces
+
+* 📦 **Synergistic Coordination Layer**:
+  * `synergy.cweb` enables orchestration across all AI, GPU, recursion, and symbolic tiers
+
 * 📄 **Literate Codebase (`.cweb`)**:
-
   * Every module is self-documenting and extractable via `cweave`/`ctangle`
-* 🧪 **Disassembler + Test Infrastructure**:
 
+* 🧪 **Disassembler + Test Infrastructure**:
   * Disassembles `.hvm` with symbolic introspection
   * CI-compatible tests + kernel-mode driver for system-level validation
 
@@ -76,11 +82,17 @@ src/
 ├── cuda_handle_request.cu        # CUDA symbolic tensor support
 ├── axion-ai.cweb                 # Kernel AI optimizer and rollback hooks
 ├── disassembler.cweb             # Human-readable `.hvm` introspector
-├── recursive_tier_execution.cweb # Tier transition driver (T81 → T729)
 ├── recursion_exporter.cweb       # Export symbolic trace to `.t81viz`
+├── synergy.cweb                  # Cross-module synergy + integration layer
 ├── FrameSceneBuilder.cweb        # 3D recursion visualizer with jMonkeyEngine
 ├── tisc_backend.cweb             # TISC backend compiler
 ├── TISCQueryCompiler.cweb        # Semantic query-to-TISC compiler
+├── nist_encryption.cweb          # AES/RSA/SHA support for secure data flows
+
+
+
+
+
 
 tests/
 ├── hanoivm-test.cweb             # Kernel-mode debugfs test harness
@@ -106,13 +118,11 @@ README.md                         # You are here
 ## ⚙️ Getting Started
 
 ### 🔧 Build
-
 ```bash
 bazel build //...
 ```
 
 ### ✅ Run Tests
-
 ```bash
 bazel test //:disasm_advanced_test
 bazel test //:disasm_controlflow_test
@@ -120,14 +130,12 @@ bazel test //:disasm_logic_test
 ```
 
 ### 🧠 Kernel Test Harness
-
 ```bash
 sudo insmod hanoivm-test.ko
 cat /sys/kernel/debug/hanoivm-test
 ```
 
 ### 🔬 Tier Execution Demo
-
 ```bash
 bazel run //:recursive_tier_execution -- --max-depth=36
 ```
@@ -137,18 +145,15 @@ bazel run //:recursive_tier_execution -- --max-depth=36
 ## 🤖 Axion + GAIA Integration
 
 * **GPU Execution Paths**:
-
   * NVIDIA: `cuda_handle_request.cu`
   * AMD: `gaia_handle_request.cweb`
 
 * **Ternary AI Macros**:
-
   * `T729Intent` for symbolic AI behavior
   * `T729MetaOpcode` for entropy-weighted logic switching
   * `T729HoloTensor` for FFT and multi-dimensional signal composition
 
 * **Signal Control**:
-
   * Axion tracks recursive entropy, triggers promotion/demotion
   * `rollback`, `optimize`, `snapshot` available via NLP hooks
 
@@ -169,41 +174,30 @@ bazel run //:recursive_tier_execution -- --max-depth=36
 ## 📈 Project Status
 
 ✅ Recursive execution engine
-
 ✅ Literate `.cweb` modular design
-
 ✅ Full symbolic tier stack (T81 → T243 → T729)
-
 ✅ Pattern dispatch and entropy signal handling
-
 ✅ Axion AI integration with rollback and NLP
-
 ✅ GPU offload (HIP + CUDA) for symbolic macros
-
 ✅ Verbose `.hvm` disassembler and type introspection
-
 ✅ Kernel-level testing (`debugfs`)
-
 ✅ `.t81viz` recursion trace export
-
+✅ `.synergy.cweb` for unified tier integration
+✅ AES-encrypted symbolic trace exports (`nist_encryption.cweb`)
 ✅ 3D visualizer: `FrameSceneBuilder.cweb` + `PulseControl`
 
 🔜 TISC query compiler with entropy scoring
-
 🔜 Live REPL for `.t81` to `.hvm`
-
 🔜 LLVM IR export for hybrid backend
-
 🔜 Axion log streaming in Looking Glass
-
 
 ---
 
 ## 🔗 Related Projects
 
-* [**Axion AI**](https://github.com/copyl-sys) — AI optimizer and rollback kernel
+* [**Axion AI**] — AI optimizer and rollback kernel
 * **T81Lang** — Ternary language for symbolic logic + AI macros
-* [**Alexis Linux**](https://github.com/copyl-sys) — AI-first OS with ternary kernel base
+* [**Alexis Linux**] — AI-first OS with ternary kernel base
 * **Project Looking Glass** — 3D GUI for recursion visualization and stack tiering
 
 ---
