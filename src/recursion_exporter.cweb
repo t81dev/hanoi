@@ -1,4 +1,11 @@
-@* recursion_exporter.cweb -- Extended recursion export with Axion AI annotations, ternary insight, and symbolic tier awareness.
+@* recursion_exporter.cweb | Symbolic Recursion Trace Exporter with Tier + Entropy Awareness *@
+
+This module records recursive execution traces with ternary context,
+Axion AI metadata, and symbolic tier diagnostics. Integrated with:
+- entropy_monitor.cweb
+- symbolic_trace.cweb
+
+Output is serialized as `.json` and used by visualization tools (e.g. Looking Glass).
 
 @c
 #include "t81_core.h"
@@ -6,6 +13,7 @@
 #include "hanoivm_vm.h"
 #include "axion_api.h"
 #include "json_export.h"
+#include <linux/timekeeping.h>  // For timestamping
 
 #define MAX_JSON_DEPTH 729
 
@@ -36,13 +44,17 @@ typedef struct {
     // Symbolic tier metadata
     char active_tier[16];               // "T81", "T243", "T729"
     char symbolic_opcode[81];          // e.g. "OP_T729_META_EXEC"
-    char intent_label[81];             // e.g. "Forecast\PhaseShift"
+    char intent_label[81];             // e.g. "Forecast\\PhaseShift"
     double entropy_delta;              // Δτ[27] across this frame
+
+    // Temporal
+    unsigned long long timestamp_ns;
 } RecursiveFrame;
 
 typedef struct {
     RecursiveFrame frames[MAX_JSON_DEPTH];
     int total_depth;
+    char last_label[81];
 } RecursionTrace;
 
 static RecursionTrace global_trace;
@@ -56,7 +68,6 @@ const char* ternary_state_symbol(int state) {
     }
 }
 
-/* Capture a single frame with Axion + Symbolic T243/T729 tier enrichment */
 void capture_recursive_frame(HVMContext* ctx, const char* func_name, int depth) {
     if (depth >= MAX_JSON_DEPTH) return;
 
@@ -78,8 +89,10 @@ void capture_recursive_frame(HVMContext* ctx, const char* func_name, int depth) 
     strncpy(frame->symbolic_opcode, get_symbolic_opcode(ctx), 80);
     strncpy(frame->intent_label, get_symbolic_intent(ctx), 80);
     frame->entropy_delta = measure_entropy_delta(ctx);
+    frame->timestamp_ns = ktime_get_ns();
 
     global_trace.total_depth = depth + 1;
+    strncpy(global_trace.last_label, func_name, sizeof(global_trace.last_label));
 }
 
 void export_recursion_trace(const char* output_path) {
@@ -115,9 +128,14 @@ void export_recursion_trace(const char* output_path) {
                 t81_type_name(d.type), t81_to_string(&d),
                 (j == MAX_LOCALS - 1 ? "" : ","));
         }
-        fprintf(f, "      ]\n");
+        fprintf(f, "      ],\n");
+
+        fprintf(f, "      \"timestamp_ns\": %llu\n", frame->timestamp_ns);
         fprintf(f, "    }%s\n", (i == global_trace.total_depth - 1 ? "" : ","));
     }
-    fprintf(f, "  ]\n}\n");
+
+    fprintf(f, "  ],\n");
+    fprintf(f, "  \"finalLabel\": \"%s\"\n", global_trace.last_label);
+    fprintf(f, "}\n");
     fclose(f);
 }
