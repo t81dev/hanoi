@@ -1,7 +1,8 @@
-@* logviewer.cweb | AxionAI + HanoiVM Telemetry Log Viewer Interface
+@* logviewer.cweb | AxionAI + HanoiVM Telemetry Log Viewer Interface *@
 
 This module exposes structured read-only access to telemetry.json-like metadata
 via debugfs, allowing both humans and AI agents to inspect install/runtime data.
+It reflects v0.9.2+ support and symbolic log awareness.
 
 @c
 #include <linux/module.h>
@@ -15,13 +16,12 @@ via debugfs, allowing both humans and AI agents to inspect install/runtime data.
 #define LOGVIEW_NAME "telemetry-view"
 
 static struct dentry *logview_debug_dir;
-static char *log_buffer;
 
 @<Telemetry Content@>=
 static const char *telemetry_json =
 "{\n"
 "  \"package\": \"hanoivm\",\n"
-"  \"version\": \"0.9.3-dev\",\n"
+"  \"version\": \"0.9.2\",\n"
 "  \"build\": {\n"
 "    \"tangled\": true,\n"
 "    \"compiled\": true,\n"
@@ -37,7 +37,12 @@ static const char *telemetry_json =
 "  },\n"
 "  \"ai_feedback\": {\n"
 "    \"entropy_anomalies\": 0,\n"
-"    \"rollback_events\": 0\n"
+"    \"rollback_events\": 0,\n"
+"    \"synergy_signals\": 3\n"
+"  },\n"
+"  \"metrics\": {\n"
+"    \"tisc_queries\": 11,\n"
+"    \"looking_glass_active\": true\n"
 "  }\n"
 "}\n";
 
@@ -72,6 +77,6 @@ static void __exit logview_exit(void) {
 
 module_init(logview_init);
 module_exit(logview_exit);
-MODULE_LICENSE("GPL");
+MODULE_LICENSE("MIT");
 MODULE_AUTHOR("Axion + HanoiVM Team");
 MODULE_DESCRIPTION("DebugFS JSON log viewer for Axion AI + HanoiVM telemetry");
