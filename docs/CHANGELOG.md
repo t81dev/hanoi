@@ -1,5 +1,80 @@
 # 📜 CHANGELOG.md
 
+## \[v0.9.2] - 2025-05-18
+
+### ✨ Added
+
+* **🧠 `synergy.cweb` – Global Project Integrator**
+
+  * Introduced a dedicated synergy module to coordinate cross-cutting logic between T81Lang, Axion AI, GPU dispatch layers, and tier-aware recursion.
+  * Centralized bridge logic for T243/T729 interop, entropy signaling, and AI-enhanced stack promotion.
+  * Annotated function calls with Axion meta-feedback and symbolic tier callbacks.
+
+* **📘 Documentation Refresh**
+
+  * Fully revised `README.md` with synergy section, complete tier documentation, and unified GPU/AI model overview.
+  * Refactored `ROADMAP.md` to include current project progress across Phase 6–9 with repository-aligned status.
+  * Prepared new `synergy.cweb` documentation for CWEAVE integration.
+
+* **🧪 Disassembler/Export Improvements**
+
+  * Expanded `recursion_exporter.cweb` to include symbolic tier snapshots and Axion annotations in trace outputs.
+  * Improved entropy delta calculation (`τ[27]`) across recursive stack frames.
+
+* **📦 Archive Update**
+
+  * Merged new `.cweb` files into `hanoivm-0.9.tar` package.
+  * Improved Makefile and CWEAVE/TANGLE build integration.
+
+### 🛠️ Changed
+
+* **⚙️ Runtime Configuration (config\_.cweb)**
+
+  * Added explicit tier-aware toggles and symbolic log modes.
+  * Added fallback resolution mode for tier downgrade on entropy violation.
+
+* **🌐 README + ROADMAP Synergy**
+
+  * Rewritten `README.md` with tier symbols, AI flow logic, and direct mapping to `.cweb` components.
+  * Synced all ROADMAP phases with live GitHub repository milestones at [t81dev/hanoi](https://github.com/t81dev/hanoi).
+
+* **🔁 Interpreter Stack Improvements**
+
+  * Integrated symbolic tier fallback into interpreter (`interpret_hvm`) with Axion context switching.
+  * Linked `t81_stack` to `gaia_handle_request` and `cuda_handle_request` as dynamic macro executors.
+
+### 🚗 Fixed
+
+* **🧩 Recursive Frame Capture**
+
+  * Corrected local frame offset indexing in `recursion_exporter.cweb` under symbolic promotion.
+  * Patched null-symbol fallback in `get_symbolic_opcode()` and `get_symbolic_intent()` macros.
+
+* **🔍 Entropy Signal Drift**
+
+  * Addressed edge-case anomalies when Axion meta-opcodes rapidly shifted tiers during nested recursion.
+
+* **💡 AI Signal Stabilization**
+
+  * Fixed Axion AI optimization score race condition during stack collapse suggestions.
+
+---
+
+## 🔮 Notes & Reflections
+
+This release finalizes the structural convergence of:
+
+* Recursive logic
+* AI introspection
+* Ternary symbolic execution
+* GPU-tier dispatch
+
+The introduction of `synergy.cweb` marks a shift toward unified, intelligent orchestration between all symbolic components.
+
+---
+
+> *"The stack isn’t just execution—it's a dialogue between logic and entropy."* — `synergy.cweb`
+
 ## \[v0.9.1] - 2025-05-03
 
 ### ✨ Added
