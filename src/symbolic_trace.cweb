@@ -7,6 +7,7 @@ This module aggregates symbolic execution events from:
 It links with `entropy_monitor.cweb` and `recursion_exporter.cweb`.
 
 Accessible via: `/sys/kernel/debug/symbolic-trace`
+Updated for v0.9.2+: Includes entropy flux, recursion label snapshot, and symbolic tier pulse metrics.
 
 @c
 #include <linux/module.h>
@@ -35,17 +36,23 @@ static ktime_t last_trace_time;
 
 @<Update Symbolic Trace Counters@>=
 static void record_symbolic_event(void) {
-    total_symbolic_opcodes += 3;
+    total_symbolic_opcodes += 3;  // Simulated opcode calls
     t243_fsm_steps += 1;
     t729_fft_calls += 1;
-    if (get_entropy_flux() > 30) entropy_spikes++;
-    recursion_depth_max = max(recursion_depth_max, get_recursion_depth());
+
+    int flux = get_entropy_flux();
+    if (flux > 30) entropy_spikes++;
+
+    int depth = get_recursion_depth();
+    recursion_depth_max = max(recursion_depth_max, depth);
+
     last_trace_time = ktime_get();
 }
 
 @<Generate Trace Report@>=
 static void generate_trace_report(void) {
     record_symbolic_event();
+
     snprintf(trace_log, sizeof(trace_log),
         "{\n"
         "  \"symbolic_trace\": {\n"
@@ -57,7 +64,9 @@ static void generate_trace_report(void) {
         "  },\n"
         "  \"recursion_snapshot\": \"%s\",\n"
         "  \"entropy_level\": %d,\n"
-        "  \"timestamp_ns\": %llu\n"
+        "  \"timestamp_ns\": %llu,\n"
+        "  \"tier_mode\": \"%s\",\n"
+        "  \"active_symbol\": \"%s\"\n"
         "}\n",
         total_symbolic_opcodes,
         t243_fsm_steps,
@@ -66,7 +75,9 @@ static void generate_trace_report(void) {
         recursion_depth_max,
         get_last_recursion_label(),
         get_entropy_flux(),
-        ktime_to_ns(last_trace_time));
+        ktime_to_ns(last_trace_time),
+        get_current_tier_mode(),
+        get_active_symbolic_opcode());
 }
 
 @<DebugFS Symbolic Trace Interface@>=
