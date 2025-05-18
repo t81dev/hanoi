@@ -1,0 +1,59 @@
+@* init.cweb | HanoiVM Initialization Module *@
+
+This file contains the startup logic for initializing the HanoiVM runtime environment.
+It loads configuration, performs environment checks, and prepares stack, AI, and GPU components.
+
+---
+
+@<Include Headers@>=
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdbool.h>
+#include <string.h>
+#include "config.h"
+#include "t81_stack.h"
+#include "axion_api.h"
+#include "gpu_probe.h"
+#include "log_trace.h"
+#include "hanoivm_vm.h"
+
+---
+
+@<Define Initialization Entry Point@>=
+void hanoi_init(HanoiVMConfig* cfg) {
+    log_info("[HVM Init] Starting initialization sequence...");
+
+    if (cfg->detect_gpu) {
+        if (!gpu_probe_available()) {
+            log_warn("[HVM Init] No compatible GPU found. Disabling GPU support.");
+            cfg->enable_gpu_support = false;
+        } else {
+            log_info("[HVM Init] Compatible GPU detected.");
+        }
+    }
+
+    if (cfg->detect_pcie_accelerator) {
+        // Add PCIe check logic here (mocked for now)
+        log_info("[HVM Init] PCIe acceleration assumed available.");
+    }
+
+    // Initialize Axion AI kernel (if enabled)
+    if (cfg->enable_ai_log_feedback) {
+        axion_init(cfg->ai_optimization_mode);
+        log_info("[HVM Init] Axion AI kernel initialized.");
+    }
+
+    // Initialize the ternary stack
+    init_stack();
+    log_info("[HVM Init] Ternary stack initialized.");
+
+    // Display initial configuration
+    print_config(cfg);
+    log_info("[HVM Init] Configuration loaded and runtime ready.");
+}
+
+@<Header Declarations@>=
+@h
+void hanoi_init(HanoiVMConfig* cfg);
+
+@* End of init.cweb *@
