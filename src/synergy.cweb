@@ -1,0 +1,103 @@
+@* synergy.cweb | Cross-Module Synergy Engine for HanoiVM 0.9
+   This module centralizes multi-module functionality across T81Lang, Axion AI, T243/T729 symbolic logic, GPU dispatch, and recursive trace capture.
+   It provides global initialization hooks, runtime synchronization patterns, and encryption-aware symbolic export.
+   Enhancements:
+    - Unified symbolic opcode and intent resolution
+    - Tier-detection hooks for introspection layers
+    - AI-driven export and secure trace encapsulation
+    - AES-wrapped symbolic logs via `nist_encryption`
+    - Deep synergy with recursion_exporter and axion-api
+@#
+
+@<Include Dependencies@>=
+#include "hanoivm_vm.h"
+#include "t81_stack.h"
+#include "axion_api.h"
+#include "recursion_exporter.h"
+#include "nist_encryption.h"
+#include "disassembler.h"
+#include "advanced_ops.h"
+#include <time.h>
+@#
+
+@* Global Hook Initialization
+This initializes Axion, resets stack/recursion, and sets symbolic defaults.
+@c
+void synergy_initialize(HVMContext* ctx) {
+    reset_recursion_depth();
+    axion_init_session(ctx);
+    ctx->symbolic_opcode = "NOP";
+    ctx->intent_label = "None";
+    ctx->tier_mode = 81;
+    axion_log("[Synergy Init] Initialized symbolic context and Axion session.");
+}
+@#
+
+@* Tier Awareness and Symbolic Tracking
+These functions expose the symbolic and tier state globally.
+@c
+const char* synergy_detect_tier(HVMContext* ctx) {
+    return (ctx->tier_mode == 729) ? "T729" : (ctx->tier_mode == 243) ? "T243" : "T81";
+}
+
+const char* synergy_get_opcode(HVMContext* ctx) {
+    return ctx->symbolic_opcode ? ctx->symbolic_opcode : "NOP";
+}
+
+const char* synergy_get_intent(HVMContext* ctx) {
+    return ctx->intent_label ? ctx->intent_label : "None";
+}
+@#
+
+@* AES-Secured Export for Symbolic Traces
+@c
+void synergy_secure_export_trace(HVMContext* ctx, const char* path, const unsigned char* aes_key, const unsigned char* iv) {
+    const char* raw_path = "trace_temp.json";
+    export_recursion_trace(raw_path);
+
+    FILE* f = fopen(raw_path, "rb");
+    if (!f) return;
+    fseek(f, 0, SEEK_END);
+    long len = ftell(f);
+    rewind(f);
+
+    unsigned char* buf = malloc(len);
+    fread(buf, 1, len, f);
+    fclose(f);
+
+    int cipher_len = 0;
+    char* encrypted = AES_Encrypt(buf, len, aes_key, iv, 1, &cipher_len);
+    free(buf);
+
+    FILE* out = fopen(path, "wb");
+    if (out) {
+        fwrite(encrypted, 1, cipher_len, out);
+        fclose(out);
+        axion_log("[Synergy Export] Trace secured and saved.");
+    }
+    free(encrypted);
+    remove(raw_path);
+}
+@#
+
+@* AI-Enhanced Disassembly Export
+@c
+void synergy_ai_disassemble(HVMContext* ctx) {
+    char filename[128];
+    snprintf(filename, sizeof(filename), "dis_%s.json", ctx->session_id);
+    disassemble_to_file_with_session("dis_trace", ctx->session_id);
+    axion_log("[Synergy] Disassembly exported for session.");
+}
+@#
+
+@* Exportable Interface
+@h
+void synergy_initialize(HVMContext* ctx);
+const char* synergy_detect_tier(HVMContext* ctx);
+const char* synergy_get_opcode(HVMContext* ctx);
+const char* synergy_get_intent(HVMContext* ctx);
+void synergy_secure_export_trace(HVMContext* ctx, const char* path, const unsigned char* aes_key, const unsigned char* iv);
+void synergy_ai_disassemble(HVMContext* ctx);
+@#
+
+@* End of synergy.cweb *@
