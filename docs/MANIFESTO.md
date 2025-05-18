@@ -113,6 +113,7 @@ cuda_handle_request.cweb     | CUDA GPU symbolic tensor dispatcher
 disassembler.cweb            | Bytecode and symbolic data decoder
 disasm_hvm.cweb              | Recursive symbolic bytecode disassembler
 emit_hvm.cweb                | T81Lang bytecode generation tool
+entropy_monitor.cweb         | HanoiVM entroy monitoring daemon
 gaia_handle_request.cweb     | ROCm/HIP GPU execution dispatcher
 ghidra_hvm_plugin.cweb       | Ghidra plugin for `.hvm` analysis
 hanoivm_vm.cweb              | Core VM interpreter and recursion engine
@@ -133,9 +134,12 @@ logviewer.cweb               | Interactive log viewer with AI filters
 main_driver.cweb             | Primary VM execution entry point
 meta.cweb                    | Metadata constants and identity signatures
 nist_encryption.cweb         | Ternary-compatible cryptographic utilities
-recursive_exporter.cweb      | Recursion state export with Axion metadata
+nlp_query_bridge.cweb        | NLP to symbolic query bridge module
+recursive_exporter.cweb      | Extended Recursion state export with Axion metadata
 recursive_tier_execution.cweb| VM recursive stack tier promotion simulator
+stack_snapshot.cweb          | Stack snapshot utility for HanoiVM
 simple_add.cweb              | Example program demonstrating ternary addition
+symbolic_trace.cweb          | Unified symbolic trace interface for HanoiVM AI kernel
 telemetry-cli.cweb           | VM introspection and profiling CLI tool
 ternary_arithmetic_optimization.cweb | Optimized ternary arithmetic routines
 test_advanced_hvm.cweb       | Test suite for symbolic and AI opcodes
