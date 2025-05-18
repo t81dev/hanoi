@@ -100,5 +100,3 @@ By combining symbolic intent, ternary logic, entropy awareness, and AI-assisted 
 May this stack lead you further into recursion, safely.
 
 ---
-
-Let me know if you'd like the document formatted as `.md`, `.cweb`, `.pdf`, or prepared for packaging in your `.tar.gz` release.
