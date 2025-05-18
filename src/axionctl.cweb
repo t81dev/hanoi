@@ -83,13 +83,19 @@ void inject_values(const char *values) {
 
 @<Usage Help@>=
 void print_usage(const char *prog) {
-    fprintf(stderr, "Usage: %s [read | cmd <command> | inject <data>]\n", prog);
+    fprintf(stderr, "\nAxion CLI Tool\n");
+    fprintf(stderr, "Usage: %s <command> [args]\n\n", prog);
+    fprintf(stderr, "Commands:\n");
+    fprintf(stderr, "  read\t\t\tRead current ternary stack state\n");
+    fprintf(stderr, "  cmd <command>\tSend NLP command (e.g. simulate, clear, optimize)\n");
+    fprintf(stderr, "  inject <data>\tInject raw data into the ternary stack\n");
+    fprintf(stderr, "  help\t\t\tShow this help message\n\n");
     exit(EXIT_FAILURE);
 }
 
 @<Main Routine@>=
 int main(int argc, char *argv[]) {
-    if (argc < 2)
+    if (argc < 2 || strcmp(argv[1], "help") == 0)
         print_usage(argv[0]);
 
     if (strcmp(argv[1], "read") == 0) {
