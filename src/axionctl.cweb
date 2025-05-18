@@ -1,0 +1,106 @@
+@* axionctl.cweb | Userspace CLI Tool for Axion AI Kernel Module
+This tool allows userland interaction with the Axion AI kernel module
+via the DebugFS interface exposed at `/sys/kernel/debug/axion-ai`.
+It supports command dispatching, stack inspection, and data injection
+into the ternary AI stack.
+
+Synergy Suggestions:
+- Add support for reading entropy values per stack item.
+- Integrate session logging to userland log directory.
+- Auto-detect DebugFS mount path for portability.
+- Add support for structured I/O (e.g., JSON format output).
+- Implement integration hooks for visualization dashboards (e.g., via ZeroMQ).
+
+@c
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <errno.h>
+
+#define AXION_DEBUGFS_PATH "/sys/kernel/debug/axion-ai"
+#define MAX_BUF 1024
+
+@<Send NLP Command@>=
+void send_command(const char *cmd) {
+    int fd = open(AXION_DEBUGFS_PATH, O_WRONLY);
+    if (fd < 0) {
+        perror("open");
+        exit(EXIT_FAILURE);
+    }
+
+    char buf[MAX_BUF];
+    snprintf(buf, sizeof(buf), "cmd:%s", cmd);
+
+    if (write(fd, buf, strlen(buf)) < 0) {
+        perror("write");
+        close(fd);
+        exit(EXIT_FAILURE);
+    }
+
+    close(fd);
+    printf("[axionctl] Sent command: %s\n", cmd);
+}
+
+@<Read Stack Contents@>=
+void read_stack(void) {
+    int fd = open(AXION_DEBUGFS_PATH, O_RDONLY);
+    if (fd < 0) {
+        perror("open");
+        exit(EXIT_FAILURE);
+    }
+
+    char buf[MAX_BUF];
+    ssize_t len = read(fd, buf, sizeof(buf) - 1);
+    if (len < 0) {
+        perror("read");
+        close(fd);
+        exit(EXIT_FAILURE);
+    }
+    buf[len] = '\0';
+    close(fd);
+
+    printf("[axionctl] Stack state: %s\n", buf);
+}
+
+@<Inject Stack Values@>=
+void inject_values(const char *values) {
+    int fd = open(AXION_DEBUGFS_PATH, O_WRONLY);
+    if (fd < 0) {
+        perror("open");
+        exit(EXIT_FAILURE);
+    }
+
+    if (write(fd, values, strlen(values)) < 0) {
+        perror("write");
+        close(fd);
+        exit(EXIT_FAILURE);
+    }
+    close(fd);
+    printf("[axionctl] Injected values to stack.\n");
+}
+
+@<Usage Help@>=
+void print_usage(const char *prog) {
+    fprintf(stderr, "Usage: %s [read | cmd <command> | inject <data>]\n", prog);
+    exit(EXIT_FAILURE);
+}
+
+@<Main Routine@>=
+int main(int argc, char *argv[]) {
+    if (argc < 2)
+        print_usage(argv[0]);
+
+    if (strcmp(argv[1], "read") == 0) {
+        read_stack();
+    } else if (strcmp(argv[1], "cmd") == 0 && argc == 3) {
+        send_command(argv[2]);
+    } else if (strcmp(argv[1], "inject") == 0 && argc == 3) {
+        inject_values(argv[2]);
+    } else {
+        print_usage(argv[0]);
+    }
+
+    return 0;
+}
