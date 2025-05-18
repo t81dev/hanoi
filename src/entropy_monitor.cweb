@@ -1,5 +1,13 @@
 @* entropy_monitor.cweb | HanoiVM Entropy Monitoring Daemon *@
 
+This module tracks entropy drift in `τ[27]`, triggers rollback via Axion AI
+when fluctuations exceed a configurable threshold, and publishes results via
+debugfs at `/sys/kernel/debug/entropy-monitor`.
+
+It complements:
+- `recursion_exporter.cweb` (for recursion state)
+- `symbolic_trace.cweb` (for symbolic opcode behavior)
+
 @<Include Dependencies@>=
 #include <linux/module.h>
 #include <linux/kernel.h>
@@ -8,9 +16,11 @@
 #include <linux/uaccess.h>
 #include <linux/slab.h>
 #include <linux/timer.h>
+#include <linux/jiffies.h>
+#include <linux/timekeeping.h>
 
-#include "axion_api.h"  // for entropy access and rollback
-#include "hanoivm_stack.h"
+#include "axion_api.h"        // Axion: entropy hooks and rollback
+#include "hanoivm_stack.h"    // HanoiVM: symbolic stack state
 
 #define ENTROPY_THRESHOLD 81
 #define ENTROPY_MONITOR_INTERVAL_MS 500
@@ -20,20 +30,23 @@
 static struct timer_list entropy_timer;
 static struct dentry *entropy_debug_node;
 static char entropy_log[256];
-static int last_entropy = 0;
 
-@<Timer Callback@>=
+static int last_entropy = 0;
+static ktime_t last_event_tick;
+
+@<Entropy Monitor Timer Callback@>=
 void entropy_check(struct timer_list *t) {
-    int current_entropy = get_entropy_tau27(); // Hypothetical accessor
+    int current_entropy = get_entropy_tau27();  // Entropy probe: τ[27]
     int delta = current_entropy - last_entropy;
+    last_event_tick = ktime_get();
 
     if (abs(delta) > ENTROPY_THRESHOLD) {
         snprintf(entropy_log, sizeof(entropy_log),
-                 "[Entropy Alert] Δτ[27] = %d exceeds threshold\n", delta);
+                 "[Entropy Alert] Δτ[27] = %d @ %llu ns\n", delta, ktime_to_ns(last_event_tick));
         axion_trigger_rollback("entropy_spike");
     } else {
         snprintf(entropy_log, sizeof(entropy_log),
-                 "[Entropy OK] Δτ[27] = %d\n", delta);
+                 "[Entropy OK] Δτ[27] = %d @ %llu ns\n", delta, ktime_to_ns(last_event_tick));
     }
 
     last_entropy = current_entropy;
@@ -57,7 +70,7 @@ static const struct file_operations entropy_fops = {
 
 @<Module Init / Exit@>=
 static int __init entropy_monitor_init(void) {
-    pr_info("[entropy-monitor] Init\n");
+    pr_info("[entropy-monitor] Initializing\n");
     entropy_debug_node = debugfs_create_file(MONITOR_NODE, 0444, NULL, NULL, &entropy_fops);
     timer_setup(&entropy_timer, entropy_check, 0);
     mod_timer(&entropy_timer, jiffies + msecs_to_jiffies(ENTROPY_MONITOR_INTERVAL_MS));
@@ -67,11 +80,11 @@ static int __init entropy_monitor_init(void) {
 static void __exit entropy_monitor_exit(void) {
     debugfs_remove(entropy_debug_node);
     del_timer_sync(&entropy_timer);
-    pr_info("[entropy-monitor] Exit\n");
+    pr_info("[entropy-monitor] Shutdown\n");
 }
 
 module_init(entropy_monitor_init);
 module_exit(entropy_monitor_exit);
-MODULE_LICENSE("MIT");
-MODULE_AUTHOR("HanoiVM Dev Team");
-MODULE_DESCRIPTION("Entropy Monitor and Axion Signal Integration");
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("Axion + HanoiVM Team");
+MODULE_DESCRIPTION("Entropy monitor with Axion rollback for symbolic tier integrity");
