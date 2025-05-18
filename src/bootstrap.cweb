@@ -1,0 +1,67 @@
+@* bootstrap.cweb | HanoiVM Bootstrap Loader and Preflight Checks *@
+
+This module defines the bootstrap sequence for HanoiVM. It validates system readiness,
+loads essential modules (AI, VM, stack), and launches the ternary execution runtime.
+
+Includes:
+- Runtime configuration injection
+- Axion AI kernel ping + confirmation
+- Stack allocator sanity check
+- Entry point validation and entropy seed
+- Optional warmup diagnostic output
+
+---
+
+@<Include Dependencies@>=
+#include "config.cweb"
+#include "init.cweb"
+#include "axion_api.h"
+#include "t81_stack.h"
+#include "hanoivm_vm.h"
+#include <time.h>
+#include <stdio.h>
+
+---
+
+@<Bootstrap Runtime Entry@>=
+int bootstrap_hanoivm(int argc, char** argv) {
+    printf("[BOOT] Initializing HanoiVM Runtime...\n");
+
+    // Load default or overridden configuration
+    HanoiVMConfig config = default_config();
+    if (config.enable_runtime_overrides) apply_env_overrides(&config);
+    if (config.enable_debug_mode) print_config(&config);
+
+    // Sanity checks
+    if (!initialize_stack_state()) {
+        fprintf(stderr, "[BOOT ERROR] Failed to initialize stack state.\n");
+        return 1;
+    }
+
+    // Entropy seed for recursive tiering
+    srand((unsigned int) time(NULL));
+    printf("[BOOT] Entropy system initialized.\n");
+
+    // Ping Axion kernel
+    if (!axion_init()) {
+        fprintf(stderr, "[BOOT ERROR] Axion AI kernel failed to start.\n");
+        return 2;
+    }
+    printf("[BOOT] Axion AI kernel online.\n");
+
+    // Optional warmup diagnostics
+    if (config.enable_debug_mode) {
+        printf("[BOOT] Performing warmup diagnostics...\n");
+        axion_log("[AXION] Warmup tracepoint reached.");
+    }
+
+    printf("[BOOT] HanoiVM bootstrap complete. Launching runtime...\n");
+    return 0; // VM will be launched by caller
+}
+
+---
+
+@h
+int bootstrap_hanoivm(int argc, char** argv);
+
+@* End of bootstrap.cweb *@
