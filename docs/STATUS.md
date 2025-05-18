@@ -1,7 +1,3 @@
-Here is the updated `STATUS.md` reflecting the progress achieved in version **v0.9.2** as of **May 18, 2025**, including the addition of `synergy.cweb`, improved AI-tier interactions, disassembler/export integration, and updates from the GitHub repository.
-
----
-
 # ✅ STATUS.md
 
 ## 📊 HanoiVM Development Status (v0.9.2 — May 2025)
@@ -87,7 +83,3 @@ Here is the updated `STATUS.md` reflecting the progress achieved in version **v0
 | 🧬 PCIe Ternary Coprocessor | M.2 accelerator for HanoiVM             | 🔄 Prototype  | Electrical design + FPGA underway                  |
 | 🕸️ Metadata Blockchain     | Immutable Axion logs & rollback history | ✅ Enabled     | Optional signing available                         |
 | 🧠 Symbolic AI Framework    | Intent-aware FFT, entropy-driven macros | ✅ Enriched    | T729MetaOpcode and Axion co-optimizations in place |
-
----
-
-Let me know if you'd like this as a `.md` file export or want to embed it into your release bundle!
