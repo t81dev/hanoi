@@ -2,6 +2,15 @@
 This module provides an AI kernel layer for the Axion platform.
 It supports a ternary AI stack, an NLP interface for runtime commands,
 and features snapshot/rollback for state recovery.
+
+Suggested Enhancements:
+- Add full entropy logging for stack entries.
+- Extend NLP interface with contextual session memory.
+- Implement a /dev interface for structured ioctl communication.
+- Secure session logging against path injection.
+- Modularize t81_unit_t operations for extensibility.
+- Integrate stack visualization hooks.
+
 @c
 #include <linux/module.h>
 #include <linux/kernel.h>
@@ -261,6 +270,6 @@ static void __exit axion_exit(void) {
 
 module_init(axion_init);
 module_exit(axion_exit);
-MODULE_LICENSE("GPL");
+MODULE_LICENSE("MIT");
 MODULE_AUTHOR("Axion AI Team");
 MODULE_DESCRIPTION("Axion AI Kernel Module with NLP and Ternary Execution");
