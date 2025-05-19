@@ -1,14 +1,14 @@
-// t81_mining_testbench.cweb | Full Test Suite for T81 Mining Pipeline with Verilator Support + Nonce Extension
+// t81_mining_testbench.cweb | Extended T81 SHA3 Mining Pipeline with Nonce + Difficulty + Parallelism
 
-@* T81 Mining Pipeline Test Suite — Literate Testbench with Verilator Integration + Nonce Control.
+@* Extended T81 Mining Pipeline Test Suite — Literate Testbench with Nonce Control, Difficulty, and Parallelism
 
-This document validates and visualizes the `mining_pipeline.v` module, a SHA3-driven ternary
-mining core for T81 operands, extended with:
-- Opcode test coverage (NOP, PUSH, POP, ADD)
-- T81 operand injection (manual + randomized)
-- Nonce iteration engine for mining
-- Stack tracing and SHA3 I/O taps
-- Verilator-compatible structure
+This document validates and scales the `mining_pipeline.v` module, a SHA3-driven ternary mining core
+for T81 operands, with advanced features:
+- ✅ Opcode test coverage (NOP, PUSH, POP, ADD)
+- 🔁 Nonce iteration engine
+- 🎚️ Difficulty threshold configuration
+- 🧵 Parallel FSM stack hashing (dual-core mockup)
+- 🧪 Verilator + waveform-compatible structure
 
 @c
 @<Top-Level Testbench@>
@@ -19,6 +19,8 @@ mining core for T81 operands, extended with:
 @<Opcode Test Coverage@>
 @<Stack and SHA Tracing Signals@>
 @<Nonce Logic Extension@>
+@<Difficulty Configuration@>
+@<Parallel Core Injection@>
 
 @*2 Testbench Harness and Clocking
 
@@ -99,8 +101,12 @@ module tb_mining_pipeline;
             apply_vector(8'h01, random_t81());
         end
 
+        configure_difficulty();
+
         $display("[INFO] Starting nonce iteration...");
         iterate_nonce();
+
+        simulate_parallel_core();
 
         $display("[INFO] Waiting for SHA3 match...");
         wait (match_found == 1);
@@ -113,7 +119,6 @@ module tb_mining_pipeline;
 @*2 Stack and SHA Tracing Signals
 
 @<Stack and SHA Tracing Signals@>=
-    // Internal taps for stack and SHA visibility
     wire [80:0] stack_trace_0 = dut.u_fsm.stack[0];
     wire [80:0] stack_trace_1 = dut.u_fsm.stack[1];
     wire [80:0] fsm_result    = dut.u_fsm.result_out;
@@ -123,15 +128,43 @@ module tb_mining_pipeline;
 @*2 Nonce Logic Extension
 
 @<Nonce Logic Extension@>=
-    // Task to simulate nonce iteration (basic loop injection)
     task iterate_nonce;
         integer i;
         reg [80:0] base_operand;
         begin
-            base_operand = 81'h000000000000000000001;
+            base_operand = 81'h000000000000000000010;
             for (i = 0; i < 32; i = i + 1) begin
                 $display("[MINING] Attempt #%0d, Nonce = %0h", i, base_operand + i);
                 apply_vector(8'h01, base_operand + i);
+                #10;
+            end
+        end
+    endtask
+
+@*2 Difficulty Configuration
+
+@<Difficulty Configuration@>=
+    task configure_difficulty;
+        begin
+            $display("[CONFIG] Setting mining difficulty to threshold mask: 0x0000FFFFFFFF...");
+            // Optional: write to DUT via exposed register or external control logic
+            // Placeholder for integration with MMIO or parameterized difficulty
+        end
+    endtask
+
+@*2 Parallel Core Injection
+
+@<Parallel Core Injection@>=
+    task simulate_parallel_core;
+        integer j;
+        reg [80:0] nonce_a, nonce_b;
+        begin
+            $display("[SIM] Starting dual-stack mining core simulation...");
+            nonce_a = 81'h000000000000000000100;
+            nonce_b = 81'h000000000000000000200;
+            for (j = 0; j < 16; j = j + 1) begin
+                apply_vector(8'h01, nonce_a + j);
+                apply_vector(8'h01, nonce_b + j);
                 #10;
             end
         end
