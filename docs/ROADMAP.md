@@ -1,134 +1,135 @@
-# 🗺️ HanoiVM — Project Roadmap
+Here's the updated and refined **🗺️ HanoiVM — Project Roadmap** based on your current `.cweb` source status and module enhancements:
 
-**HanoiVM** is a recursive, AI-augmented ternary virtual machine supporting the execution of symbolic logic across the `T81`, `T243`, and `T729` logic layers. It anchors the **T81Lang**, **Axion AI**, and **Alexis Linux** ecosystems, focusing on symbolic computation, entropy-aware logic, and AI-accelerated programming.
+---
+
+# 🗺️ **HanoiVM — Project Roadmap (v0.9+)**
+
+**HanoiVM** is a recursive, AI-augmented ternary virtual machine that executes symbolic logic across the `T81`, `T243`, and `T729` tiers. It powers the **T81Lang**, **Axion AI**, and **Alexis Linux** ecosystems, emphasizing symbolic computation, entropy-aware execution, and AI-accelerated feedback.
 
 ---
 
 ## ✅ Phase 0: Bootstrapping
 
-* [x] Repository setup & CI
-* [x] Recursive stack framework & opcode dispatch
-* [x] Base assembler, disassembler, and interpreter
-* [x] `.cweb` literate programming infrastructure
+* [x] Repository initialization and CI pipeline (`ci.yml`)
+* [x] Recursive ternary stack model with core opcode dispatcher
+* [x] Base assembler (`hvm_assembler.cweb`) and disassembler
+* [x] `.cweb`-based literate programming infrastructure
 
 ---
 
 ## ✅ Phase 1: Core Virtual Machine (T81)
 
-* [x] T81 operand & stack architecture
-* [x] Arithmetic & control opcodes implementation (`ADD81`, `CMP3`, `JMP`, etc.)
-* [x] Virtual CPU context & recursive promotion logic
-* [x] Initial symbolic opcode evaluation (`evaluate_opcode()`)
+* [x] T81 operand format and stack-based execution engine
+* [x] Arithmetic and control flow (`ADD`, `SUB`, `JMP`, etc.)
+* [x] Symbolic opcode evaluation (`evaluate_opcode()`)
+* [x] Entropy monitoring hooks and ternary error handling
 
 ---
 
 ## ✅ Phase 2: Recursive Expansion (T243/T729)
 
-* [x] `T243BigInt` and `T729Tensor` data types & APIs
-* [x] Advanced tensor primitives (`reshape`, `transpose`, `contract`)
-* [x] FSM and symbolic AI opcode extensions (`OP_T729_INTENT`, `OP_T729_HOLO_FFT`)
-* [x] Recursive symbolic operations with entropy integration
+* [x] `T243BigInt`, `T729Tensor`, and `T729HoloTensor` data structures
+* [x] Tensor ops: `reshape`, `contract`, `transpose`
+* [x] Symbolic FSMs and FFT-based ternary extensions
+* [x] Entropy integration into recursive symbolic pipelines
 
 ---
 
 ## ✅ Phase 3: Compiler & Language Toolchain
 
-* [x] Complete `T81Lang` grammar & compiler frontend (Lexer, Parser, Semantic Analyzer)
-* [x] Intermediate Representation (IR) generation and `.hvm` emission
-* [x] TISC backend with symbolic optimizations
-* [x] Standard library (`tisc_stdlib.cweb`) and REPL integration
+* [x] T81Lang compiler (Lexer → Parser → IRGen → Codegen)
+* [x] `.hvm` emission from TISC IR
+* [x] `tisc_backend.cweb` for symbolic optimization
+* [x] REPL & standard library (`tisc_stdlib.cweb`)
 
 ---
 
 ## ✅ Phase 4: Axion AI Integration
 
-* [x] Kernel AI module (`axion-ai.cweb`) with NLP-based optimization & rollback
-* [x] Entropy feedback via reserved ternary registers (`τ[27]`)
-* [x] Symbolic pattern analysis and feedback (`t81_patterns.cweb`)
-* [x] Comprehensive logging & metadata tracking with entropy-based dispatch
+* [x] Kernel NLP AI (`axion-ai.cweb`) with stack rollback and entropy tapping
+* [x] Symbolic pattern recognizer (`t81_patterns.cweb`)
+* [x] DebugFS hooks, rollback telemetry, and runtime optimizer
+* [x] Secure buffer control, NLP command processor
 
 ---
 
 ## ✅ Phase 5: Developer Experience & Tooling
 
-* [x] Robust `.cweb` literate programming model
-* [x] Full documentation (`README.md`, `manifesto.cweb`, `STATUS.md`, etc.)
-* [x] Symbolic introspection tools (disassembler, debugger)
-* [x] Recursion visualization engine (`FrameSceneBuilder.cweb`)
-* [x] Log viewer (`logviewer.cweb`) for telemetry analysis
-* [x] Stack-tier promotion visualizer and exporter (JSON integration)
+* [x] Full `.cweb` ecosystem for literate development
+* [x] Source introspection tools: disassembler, logviewer, REPL
+* [x] Recursion visualizer (`FrameSceneBuilder.cweb`)
+* [x] Telemetry analyzer (`logviewer.cweb`)
+* [x] Stack-tier visual exporter (JSON, CLI, GUI planned)
 
 ---
 
-## 🔄 Phase 6: Advanced Logic & Visualization (In Progress)
+## 🔄 Phase 6: Advanced Logic & Visualization
 
-* [x] GPU acceleration backends: CUDA (`cuda_handle_request.cu`), ROCm (`gaia_handle_request.cweb`)
-* [x] FFT-based symbolic tensor operations (`T729HoloTensor`)
-* [x] PulseControl entropy visualization animations
-* [ ] GPU Graph Execution: `hipGraphLaunch`, `cuGraphExec` pipelines
-* [ ] Symbolic AI Graph IR (`T729LogicGraph`)
-* [ ] Metadata blockchain for immutable Axion logs and security auditing
-* [ ] Project Looking Glass:
+* [x] CUDA/ROCm backend interfaces (`cuda_handle_request.cweb`, `gaia_handle_request.cweb`)
+* [x] FFT-based symbolic tensor evaluation (`T729HoloFFT`)
+* [x] Animated entropy visualizer planned (PulseControl)
+* [ ] GPU Graph Pipelines: `hipGraphLaunch`, `cuGraphExec` support
+* [ ] `T729LogicGraph` for symbolic IR visualization
+* [ ] Blockchain-style Axion logs (integrity + audit trail)
+* [ ] Looking Glass:
 
-  * [ ] Interactive HUD and inspection tools
-  * [ ] Real-time optimization timeline
-  * [ ] Axion telemetry streaming
-
----
-
-## 🔄 Phase 7: LLVM Integration & Optimization (Active)
-
-* [x] LLVM target registration (`t81-unknown-none`)
-* [x] LLVM IR integration & custom data types (`i81`)
-* [x] Instruction Selection DAG patterns and backend (`T81AsmPrinter`)
-* [x] Basic LLVM pipeline integration & testing
-* [ ] Advanced IR → TISC opcode mappings
-* [ ] Optimization passes (SIMD, loop unrolling, entropy optimization)
-* [ ] Complete LLVM backend and frontend synergy
+  * [ ] 3D HUD with real-time symbolic state visualization
+  * [ ] Timeline of optimization and entropy events
+  * [ ] Live Axion telemetry stream dashboard
 
 ---
 
-## 🔄 Phase 8: Packaging, Distribution & Automation (Next Up)
+## 🔄 Phase 7: LLVM Integration & Optimization
 
-* [x] `.cweb` package architecture with literate build flows
-* [x] Axion-driven modularization for package size management
-* [x] Version-controlled releases (`Release-v0.9-Public-Alpha.zip`)
-* [ ] `.cwebpkg` manifests for T81Lang and binary bundles
-* [ ] Automated GitHub CI/CD pipeline
-* [ ] Live documentation site & demo package hosting
-
----
-
-## ✪ Phase 9: TISC Query Compiler & Semantic Search (New)
-
-* [x] Scaffold `TISCQueryCompiler.cweb`
-* [x] Query-to-Opcode translation via NLP + symbolic parser
-* [x] Entropy-aware search scoring and result mutation logic
-* [ ] Stack-aware feedback loops with semantic state tracking
-* [ ] GPU-accelerated symbol graphs for query resolution
-* [ ] `.cweb` doc set integration with live query interface
+* [x] LLVM backend: `t81-unknown-none` target (`T81RegisterInfo.td`, `T81InstrInfo.td`)
+* [x] `i81` type, register class, instruction selection DAGs
+* [x] Integration with T81Lang codegen and IR passes
+* [ ] Opcode mappings for advanced symbolic patterns
+* [ ] LLVM IR optimization passes (entropy, unroll, SIMD)
+* [ ] Full round-trip LLVM ↔ TISC pipeline
 
 ---
 
-## 🔗 Related Ecosystem Projects
+## 🔄 Phase 8: Packaging & CI Automation
 
-* [Alexis Linux] — AI-native modular OS
-* [T81Lang] — Symbolic ternary programming language
-* [Axion AI] — Kernel-level optimization AI
-* **Project Looking Glass** — 3D symbolic recursion and state visualizer
-
----
-
-> 🧠 *"Recursion is not merely structure; it's the soul of ternary logic."*
+* [x] `.cwebpkg` and structured build tooling
+* [x] Modular builds via Axion-driven install flow
+* [x] Binary & source packaging (e.g., `Release-v0.9-Public-Alpha.zip`)
+* [ ] `.cwebpkg` for T81Lang/TISC bundle publishing
+* [ ] Full GitHub CI/CD pipeline automation
+* [ ] Live site for documentation and test suites
 
 ---
 
-### 🔄 v0.9 Summary (March 2025)
+## ✅ Phase 9: TISC Query Compiler & Semantic Search
 
-* ✅ Complete symbolic execution across T81, T243, T729 tiers
-* ✅ Comprehensive LLVM backend foundation established
-* ✅ Axion AI fully integrated with kernel-level entropy-driven logic
-* ✅ GPU acceleration active (CUDA/ROCm) with symbolic FFT
-* ✅ Advanced developer tools and recursion visualization complete
-* 🔜 Immediate Next Focus: GPU graph pipelines, Looking Glass UI enhancements, LLVM IR optimization pipeline,
-* and semantic query-to-TISC compiler
+* [x] Symbolic NLP-to-TISC engine (`tisc_query_compiler.cweb`)
+* [x] Opcode resolution via semantic scoring and entropy weighting
+* [x] Integration with `recursive_tier_execution.cweb`
+* [ ] Feedback-driven stack refinement and rank propagation
+* [ ] GPU-enhanced logic graph search
+* [ ] `.cweb`-linked semantic documentation explorer
+
+---
+
+## 🔗 Ecosystem Projects
+
+| Name                      | Purpose                                             |
+| ------------------------- | --------------------------------------------------- |
+| **Alexis Linux**          | Modular AI-native OS based on ternary introspection |
+| **T81Lang**               | Ternary symbolic programming language               |
+| **Axion AI**              | Kernel-resident optimization and symbolic AI        |
+| **Project Looking Glass** | 3D symbolic execution visualizer                    |
+
+---
+
+## ✨ March 2025 — v0.9 Feature Summary
+
+✔ Full symbolic execution stack (T81/T243/T729)
+✔ Kernel-level Axion AI with entropy introspection
+✔ LLVM backend bootstrapped (T81Target)
+✔ GPU pipeline integration (FFT + symbolic opcodes)
+✔ Stack visualization and introspection tools
+🔜 Next: GPU symbolic graphs, Project Looking Glass, TISC semantic search refinements
+
+---
