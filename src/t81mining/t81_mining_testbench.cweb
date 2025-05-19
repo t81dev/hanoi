@@ -1,12 +1,12 @@
-// t81_mining_testbench.cweb | Full Test Suite for T81 Mining Pipeline with Verilator Support
+// t81_mining_testbench.cweb | Full Test Suite for T81 Mining Pipeline with Verilator Support + Nonce Extension
 
-@* T81 Mining Pipeline Test Suite — Literate Testbench with Verilator Integration.
+@* T81 Mining Pipeline Test Suite — Literate Testbench with Verilator Integration + Nonce Control.
 
 This document validates and visualizes the `mining_pipeline.v` module, a SHA3-driven ternary
-mining core for T81 operands, through a SystemVerilog-style testbench and waveform tracing.
-It integrates:
+mining core for T81 operands, extended with:
 - Opcode test coverage (NOP, PUSH, POP, ADD)
 - T81 operand injection (manual + randomized)
+- Nonce iteration engine for mining
 - Stack tracing and SHA3 I/O taps
 - Verilator-compatible structure
 
@@ -18,6 +18,7 @@ It integrates:
 @<Testbench Harness and Clocking@>
 @<Opcode Test Coverage@>
 @<Stack and SHA Tracing Signals@>
+@<Nonce Logic Extension@>
 
 @*2 Testbench Harness and Clocking
 
@@ -98,6 +99,9 @@ module tb_mining_pipeline;
             apply_vector(8'h01, random_t81());
         end
 
+        $display("[INFO] Starting nonce iteration...");
+        iterate_nonce();
+
         $display("[INFO] Waiting for SHA3 match...");
         wait (match_found == 1);
         $display("[SUCCESS] Match found at time %0t!", $time);
@@ -115,5 +119,22 @@ module tb_mining_pipeline;
     wire [80:0] fsm_result    = dut.u_fsm.result_out;
     wire [511:0] sha_input    = dut.u_preproc.sha_input;
     wire [511:0] sha_output   = dut.u_sha3.hash_out;
+
+@*2 Nonce Logic Extension
+
+@<Nonce Logic Extension@>=
+    // Task to simulate nonce iteration (basic loop injection)
+    task iterate_nonce;
+        integer i;
+        reg [80:0] base_operand;
+        begin
+            base_operand = 81'h000000000000000000001;
+            for (i = 0; i < 32; i = i + 1) begin
+                $display("[MINING] Attempt #%0d, Nonce = %0h", i, base_operand + i);
+                apply_vector(8'h01, base_operand + i);
+                #10;
+            end
+        end
+    endtask
 
 endmodule
