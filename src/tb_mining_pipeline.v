@@ -1,5 +1,3 @@
-// tb_mining_pipeline.v — Full Opcode + SHA3 Pipeline Test with Stack and Hash Tracing
-
 `timescale 1ns/1ps
 
 module tb_mining_pipeline;
@@ -14,7 +12,6 @@ module tb_mining_pipeline;
 
     wire match_found;
 
-    // DUT instance
     mining_pipeline dut (
         .clk(clk),
         .rst(rst),
@@ -25,7 +22,7 @@ module tb_mining_pipeline;
         .match_found(match_found)
     );
 
-    // Internal signal tapping for tracing
+    // Debug trace taps
     wire [80:0] stack_trace_0 = dut.u_fsm.stack[0];
     wire [80:0] stack_trace_1 = dut.u_fsm.stack[1];
     wire [80:0] fsm_result    = dut.u_fsm.result_out;
@@ -36,14 +33,12 @@ module tb_mining_pipeline;
     initial clk = 0;
     always #5 clk = ~clk;
 
-    // Random T81 generator
     function [80:0] random_t81();
         begin
             random_t81 = {$random, $random, $random} & 81'h1FFFFFFFFFFFFFFFFFFFFFFFF;
         end
     endfunction
 
-    // Task: Apply opcode/operand pair
     task apply_vector(input [7:0] op, input [80:0] opnd);
         begin
             @(posedge clk);
@@ -56,7 +51,6 @@ module tb_mining_pipeline;
         end
     endtask
 
-    // Simulation flow
     initial begin
         $display("=== T81 Mining Pipeline Simulation ===");
         $dumpfile("tb_mining_pipeline.vcd");
@@ -64,45 +58,32 @@ module tb_mining_pipeline;
         $dumpvars(1, dut);
         $dumpvars(1, stack_trace_0, stack_trace_1, fsm_result, sha_input, sha_output);
 
-        // Initial reset
-        rst = 1;
-        opcode = 8'h00;
-        operand = 81'd0;
-        start_mine = 0;
-        valid_opcode = 0;
+        rst = 1; opcode = 8'h00; operand = 81'd0; start_mine = 0; valid_opcode = 0;
         #20;
-
         rst = 0;
         #10;
 
-        // --- NOP Test ---
         $display("[TEST] NOP");
         apply_vector(8'h00, 81'd0);
 
-        // --- PUSH Test ---
         $display("[TEST] PUSH 0x1");
         apply_vector(8'h01, 81'h000000000000000000001);
 
-        // --- PUSH Two Operands for ADD ---
         $display("[TEST] PUSH 0x2 and 0x3");
         apply_vector(8'h01, 81'h000000000000000000002);
         apply_vector(8'h01, 81'h000000000000000000003);
 
-        // --- ADD Test ---
         $display("[TEST] ADD");
         apply_vector(8'h03, 81'd0);
 
-        // --- POP Test ---
         $display("[TEST] POP");
         apply_vector(8'h02, 81'd0);
 
-        // --- Random PUSH Stream ---
         repeat (3) begin
             $display("[TEST] RANDOM PUSH");
             apply_vector(8'h01, random_t81());
         end
 
-        // --- SHA Match Wait ---
         $display("[INFO] Waiting for SHA3 match...");
         wait (match_found == 1);
         $display("[SUCCESS] Match found at time %0t!", $time);
