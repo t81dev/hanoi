@@ -1,0 +1,520 @@
+@* axion-ai.cweb | Axion AI Kernel Module with Ternary AI Stack, NLP Interface, and Rollback
+This module provides an AI kernel layer for the Axion platform.
+It supports a ternary AI stack, an NLP interface with session memory,
+a /dev interface for ioctl communication, and snapshot/rollback for state recovery.
+
+Enhancements:
+- Full entropy logging for stack entries to /tmp/axion_entropy.log.
+- NLP interface with contextual session memory using a circular buffer.
+- /dev/axion-ai interface for structured ioctl communication.
+- Secure session logging with path sanitization to prevent injection.
+- Modularized t81_unit_t operations via function pointers.
+- Stack visualization hooks for external tools.
+
+@c
+#include <linux/module.h>
+#include <linux/kernel.h>
+#include <linux/init.h>
+#include <linux/fs.h>
+#include <linux/debugfs.h>
+#include <linux/uaccess.h>
+#include <linux/slab.h>
+#include <linux/mutex.h>
+#include <linux/random.h>
+#include <linux/string.h>
+#include <linux/time.h>
+#include <linux/device.h>
+#include <linux/cdev.h>
+#include <linux/ioctl.h>
+#include <linux/seq_file.h>
+#include <linux/cred.h>
+
+@#
+
+#define AXION_NAME "axion-ai"
+#define TBIN_MAX_SIZE 729
+#define SESSION_MEMORY_SIZE 16
+#define MAX_SESSION_ID_LEN 64
+#define ENTROPY_LOG_PATH "/tmp/axion_entropy.log"
+#define DEVICE_NAME "axion-ai"
+#define CLASS_NAME "axion"
+
+@<IOCTL Definitions@>
+
+@d Ternary Types and Stack
+@<Ternary AI Stack Types@>=
+typedef enum { TERN_LOW = 0, TERN_MID = 1, TERN_HIGH = 2 } t81_ternary_t;
+
+typedef struct t81_unit t81_unit_t;
+struct t81_unit {
+    t81_ternary_t value;
+    unsigned char entropy;
+    struct {
+        t81_ternary_t (*combine)(t81_ternary_t, t81_ternary_t);
+        unsigned char (*gen_entropy)(unsigned char, unsigned char);
+    } ops;
+};
+
+typedef struct {
+    t81_unit_t stack[TBIN_MAX_SIZE];
+    int pointer;
+} t81_stack_t;
+
+typedef struct {
+    char commands[SESSION_MEMORY_SIZE][128];
+    int head;
+    int count;
+} session_memory_t;
+
+@d Global Variables
+@<Global Variables@>=
+static struct dentry *axion_debug_dir;
+static t81_stack_t axion_stack;
+static t81_stack_t snapshot_stack;
+static DEFINE_MUTEX(axion_lock);
+static session_memory_t session_mem = { .head = 0, .count = 0 };
+static dev_t axion_dev;
+static struct cdev axion_cdev;
+static struct class *axion_class;
+static struct device *axion_device;
+
+@d IOCTL Definitions
+@<IOCTL Definitions@>=
+#define AXION_IOC_MAGIC 'a'
+#define AXION_IOC_PUSH _IOW(AXION_IOC_MAGIC, 1, t81_unit_t)
+#define AXION_IOC_POP  _IOR(AXION_IOC_MAGIC, 2, t81_unit_t)
+#define AXION_IOC_EXEC _IO(AXION_IOC_MAGIC, 3)
+#define AXION_IOC_SNAPSHOT _IO(AXION_IOC_MAGIC, 4)
+#define AXION_IOC_ROLLBACK _IO(AXION_IOC_MAGIC, 5)
+
+@d Modular Unit Operations
+@<Modular Unit Operations@>=
+static t81_ternary_t default_combine(t81_ternary_t a, t81_ternary_t b) {
+    return (a + b) % 3;
+}
+
+static unsigned char default_gen_entropy(unsigned char e1, unsigned char e2) {
+    return (e1 ^ e2) ^ (get_random_u32() & 0xFF);
+}
+
+static void init_unit_ops(t81_unit_t *unit) {
+    unit->ops.combine = default_combine;
+    unit->ops.gen_entropy = default_gen_entropy;
+}
+
+@d Entropy Logging
+@<Entropy Logging@>=
+static void log_entropy(t81_unit_t *unit) {
+    struct file *f;
+    char logbuf[256];
+    int len;
+    mm_segment_t old_fs;
+
+    f = filp_open(ENTROPY_LOG_PATH, O_WRONLY | O_CREAT | O_APPEND, 0644);
+    if (IS_ERR(f)) {
+        pr_err("%s: failed to open entropy log\n", AXION_NAME);
+        return;
+    }
+
+    old_fs = get_fs();
+    set_fs(KERNEL_DS);
+
+    len = snprintf(logbuf, sizeof(logbuf), "[%lld] Entropy: 0x%02x, Value: %d\n",
+                   ktime_get_ns(), unit->entropy, unit->value);
+    kernel_write(f, logbuf, len, &f->f_pos);
+
+    set_fs(old_fs);
+    filp_close(f, NULL);
+}
+
+@d Snapshot and Rollback
+@<Snapshot + Rollback@>=
+static void take_snapshot(void) {
+    mutex_lock(&axion_lock);
+    memcpy(&snapshot_stack, &axion_stack, sizeof(t81_stack_t));
+    mutex_unlock(&axion_lock);
+    pr_info("%s: snapshot taken\n", AXION_NAME);
+}
+
+static void rollback_if_anomalous(void) {
+    mutex_lock(&axion_lock);
+    memcpy(&axion_stack, &snapshot_stack, sizeof(t81_stack_t));
+    mutex_unlock(&axion_lock);
+    pr_warn("%s: anomaly detected, rolled back\n", AXION_NAME);
+}
+
+@d Stack Operations
+@<Stack Operations@>=
+static int axion_stack_push(t81_unit_t unit) {
+    if (axion_stack.pointer >= TBIN_MAX_SIZE)
+        return -ENOMEM;
+    init_unit_ops(&unit);
+    axion_stack.stack[axion_stack.pointer++] = unit;
+    log_entropy(&unit);
+    return 0;
+}
+
+static int axion_stack_pop(t81_unit_t *unit) {
+    if (axion_stack.pointer <= 0)
+        return -EINVAL;
+    *unit = axion_stack.stack[--axion_stack.pointer];
+    log_entropy(unit);
+    return 0;
+}
+
+@d Execution Engine
+@<TBIN Execution Logic@>=
+static void axion_tbin_execute(void) {
+    t81_unit_t op1, op2, result;
+
+    mutex_lock(&axion_lock);
+    while (axion_stack.pointer >= 2) {
+        axion_stack_pop(&op2);
+        axion_stack_pop(&op1);
+
+        result.value = op1.ops.combine(op1.value, op2.value);
+        result.entropy = op1.ops.gen_entropy(op1.entropy, op2.entropy);
+
+        if (result.entropy > 0xF0) {
+            rollback_if_anomalous();
+            break;
+        }
+
+        axion_stack_push(result);
+    }
+    mutex_unlock(&axion_lock);
+}
+
+@d Session Registration
+@<Session Registration@>=
+static int sanitize_session_id(const char *session_id, char *safe_id, size_t max_len) {
+    size_t i;
+    if (!session_id || strlen(session_id) > max_len - 1)
+        return -EINVAL;
+    for (i = 0; session_id[i]; i++) {
+        if (!isalnum(session_id[i]) && session_id[i] != '_' && session_id[i] != '-')
+            return -EINVAL;
+        safe_id[i] = session_id[i];
+    }
+    safe_id[i] = '\0';
+    return 0;
+}
+
+static void axion_register_session(const char *session_id) {
+    char safe_id[MAX_SESSION_ID_LEN];
+    char path[128];
+    struct file *f;
+    char logbuf[256];
+    int len;
+    mm_segment_t old_fs;
+
+    if (sanitize_session_id(session_id, safe_id, sizeof(safe_id)) < 0) {
+        pr_err("%s: invalid session ID\n", AXION_NAME);
+        return;
+    }
+
+    snprintf(path, sizeof(path), "/tmp/axion_session_%s.log", safe_id);
+    f = filp_open(path, O_WRONLY | O_CREAT | O_APPEND, 0644);
+    if (IS_ERR(f)) {
+        pr_err("%s: failed to open session log\n", AXION_NAME);
+        return;
+    }
+
+    old_fs = get_fs();
+    set_fs(KERNEL_DS);
+    len = snprintf(logbuf, sizeof(logbuf), "[AXION] Session %s registered by UID %u.\n",
+                   safe_id, from_kuid(&init_user_ns, current_uid()));
+    kernel_write(f, logbuf, len, &f->f_pos);
+    set_fs(old_fs);
+    filp_close(f, NULL);
+}
+EXPORT_SYMBOL(axion_register_session);
+
+@d Session Memory
+@<Session Memory@>=
+static void store_session_command(const char *cmd) {
+    if (strlen(cmd) >= sizeof(session_mem.commands[0]))
+        return;
+    mutex_lock(&axion_lock);
+    strncpy(session_mem.commands[session_mem.head], cmd, sizeof(session_mem.commands[0]) - 1);
+    session_mem.commands[session_mem.head][sizeof(session_mem.commands[0]) - 1] = '\0';
+    session_mem.head = (session_mem.head + 1) % SESSION_MEMORY_SIZE;
+    if (session_mem.count < SESSION_MEMORY_SIZE)
+        session_mem.count++;
+    mutex_unlock(&axion_lock);
+}
+
+static void print_session_memory(void) {
+    int i, idx;
+    mutex_lock(&axion_lock);
+    pr_info("%s: [SESSION MEMORY] Last %d commands:\n", AXION_NAME, session_mem.count);
+    for (i = 0; i < session_mem.count; i++) {
+        idx = (session_mem.head - session_mem.count + i + SESSION_MEMORY_SIZE) % SESSION_MEMORY_SIZE;
+        pr_info("%s: %d: %s\n", AXION_NAME, i + 1, session_mem.commands[idx]);
+    }
+    mutex_unlock(&axion_lock);
+}
+
+@d Stack Visualization
+@<Stack Visualization@>=
+static void axion_visualize_stack(void) {
+    char vis_buf[TBIN_MAX_SIZE * 4];
+    int i, pos = 0;
+    mutex_lock(&axion_lock);
+    pos += snprintf(vis_buf + pos, sizeof(vis_buf) - pos, "[STACK VIS] ptr=%d | ", axion_stack.pointer);
+    for (i = 0; i < axion_stack.pointer && pos < sizeof(vis_buf) - 10; i++) {
+        pos += snprintf(vis_buf + pos, sizeof(vis_buf) - pos, "(%d,0x%02x) ",
+                        axion_stack.stack[i].value, axion_stack.stack[i].entropy);
+    }
+    mutex_unlock(&axion_lock);
+    pr_info("%s: %s\n", AXION_NAME, vis_buf);
+}
+
+@d Additional NLP Commands
+@<Additional NLP Commands@>=
+static void axion_status(void) {
+    axion_visualize_stack();
+    print_session_memory();
+}
+
+static void axion_clear(void) {
+    mutex_lock(&axion_lock);
+    axion_stack.pointer = 0;
+    take_snapshot();
+    mutex_unlock(&axion_lock);
+    pr_info("%s: stack cleared and snapshot updated\n", AXION_NAME);
+}
+
+static void axion_simulate(void) {
+    t81_stack_t sim_stack;
+    mutex_lock(&axion_lock);
+    memcpy(&sim_stack, &axion_stack, sizeof(t81_stack_t));
+    mutex_unlock(&axion_lock);
+    pr_info("%s: simulation starting...\n", AXION_NAME);
+    while (sim_stack.pointer >= 2) {
+        t81_unit_t op1, op2, result;
+        sim_stack.pointer -= 2;
+        op1 = sim_stack.stack[sim_stack.pointer];
+        op2 = sim_stack.stack[sim_stack.pointer + 1];
+        result.value = op1.ops.combine(op1.value, op2.value);
+        result.entropy = op1.ops.gen_entropy(op1.entropy, op2.entropy);
+        if (result.entropy > 0xF0) {
+            pr_warn("%s: simulation anomaly detected, aborting simulation\n", AXION_NAME);
+            return;
+        }
+        sim_stack.stack[sim_stack.pointer++] = result;
+    }
+    pr_info("%s: simulation complete, simulated top value: %d\n", AXION_NAME,
+            sim_stack.pointer > 0 ? sim_stack.stack[sim_stack.pointer - 1].value : -1);
+}
+
+@d NLP Command Parser
+@<NLP Command Parser@>=
+static void axion_parse_command(const char *cmd) {
+    store_session_command(cmd);
+    if (strstr(cmd, "optimize")) {
+        pr_info("%s: optimizing stack\n", AXION_NAME);
+        axion_tbin_execute();
+    } else if (strstr(cmd, "rollback")) {
+        rollback_if_anomalous();
+    } else if (strstr(cmd, "snapshot")) {
+        take_snapshot();
+    } else if (strstr(cmd, "status")) {
+        axion_status();
+    } else if (strstr(cmd, "clear")) {
+        axion_clear();
+    } else if (strstr(cmd, "simulate")) {
+        axion_simulate();
+    } else if (strstr(cmd, "visualize")) {
+        axion_visualize_stack();
+    } else {
+        pr_info("%s: unknown command\n", AXION_NAME);
+    }
+}
+
+@d Device File Operations
+@<Device File Operations@>=
+static long axion_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
+    t81_unit_t unit;
+    int ret = 0;
+
+    mutex_lock(&axion_lock);
+    switch (cmd) {
+    case AXION_IOC_PUSH:
+        if (copy_from_user(&unit, (t81_unit_t __user *)arg, sizeof(t81_unit_t))) {
+            ret = -EFAULT;
+            goto out;
+        }
+        unit.ops.combine = NULL; /* Prevent user-space function pointers */
+        unit.ops.gen_entropy = NULL;
+        ret = axion_stack_push(unit);
+        break;
+    case AXION_IOC_POP:
+        ret = axion_stack_pop(&unit);
+        if (ret == 0 && copy_to_user((t81_unit_t __user *)arg, &unit, sizeof(t81_unit_t)))
+            ret = -EFAULT;
+        break;
+    case AXION_IOC_EXEC:
+        axion_tbin_execute();
+        break;
+    case AXION_IOC_SNAPSHOT:
+        take_snapshot();
+        break;
+    case AXION_IOC_ROLLBACK:
+        rollback_if_anomalous();
+        break;
+    default:
+        ret = -EINVAL;
+    }
+out:
+    mutex_unlock(&axion_lock);
+    return ret;
+}
+
+static int axion_open(struct inode *inode, struct file *file) {
+    return 0;
+}
+
+static int axion_release(struct inode *inode, struct file *file) {
+    return 0;
+}
+
+static const struct file_operations axion_dev_fops = {
+    .owner = THIS_MODULE,
+    .unlocked_ioctl = axion_ioctl,
+    .open = axion_open,
+    .release = axion_release,
+};
+
+@d DebugFS Interface
+@<DebugFS Interface@>=
+static ssize_t axion_debugfs_write(struct file *file, const char __user *ubuf,
+                                   size_t count, loff_t *ppos) {
+    char *buf;
+    int i;
+
+    if (count > TBIN_MAX_SIZE)
+        return -EINVAL;
+
+    buf = kmalloc(count + 1, GFP_KERNEL);
+    if (!buf)
+        return -ENOMEM;
+
+    if (copy_from_user(buf, ubuf, count)) {
+        kfree(buf);
+        return -EFAULT;
+    }
+    buf[count] = '\0';
+
+    mutex_lock(&axion_lock);
+    if (strncmp(buf, "cmd:", 4) == 0) {
+        axion_parse_command(buf + 4);
+    } else {
+        axion_stack.pointer = 0;
+        take_snapshot();
+        for (i = 0; i < count; i++) {
+            t81_unit_t unit = {
+                .value = buf[i] % 3,
+                .entropy = buf[i]
+            };
+            axion_stack_push(unit);
+        }
+        axion_tbin_execute();
+    }
+    mutex_unlock(&axion_lock);
+    kfree(buf);
+    return count;
+}
+
+static ssize_t axion_debugfs_read(struct file *file, char __user *ubuf,
+                                  size_t count, loff_t *ppos) {
+    char out[TBIN_MAX_SIZE];
+    int i;
+
+    if (*ppos > 0 || count < axion_stack.pointer)
+        return 0;
+
+    mutex_lock(&axion_lock);
+    for (i = 0; i < axion_stack.pointer; i++)
+        out[i] = (char)(axion_stack.stack[i].value + '0');
+    mutex_unlock(&axion_lock);
+
+    if (copy_to_user(ubuf, out, axion_stack.pointer))
+        return -EFAULT;
+
+    *ppos = axion_stack.pointer;
+    return axion_stack.pointer;
+}
+
+@d FileOps and Module Lifecycle
+@<File Operations & Module Lifecycle@>=
+static const struct file_operations axion_fops = {
+    .owner = THIS_MODULE,
+    .read = axion_debugfs_read,
+    .write = axion_debugfs_write,
+};
+
+static int __init axion_init(void) {
+    int ret;
+    pr_info("%s: initializing runtime\n", AXION_NAME);
+
+    axion_debug_dir = debugfs_create_file(AXION_NAME, 0666, NULL, NULL, &axion_fops);
+    if (!axion_debug_dir) {
+        pr_err("%s: debugfs creation failed\n", AXION_NAME);
+        return -ENOMEM;
+    }
+
+    ret = alloc_chrdev_region(&axion_dev, 0, 1, DEVICE_NAME);
+    if (ret < 0) {
+        pr_err("%s: chrdev allocation failed\n", AXION_NAME);
+        debugfs_remove(axion_debug_dir);
+        return ret;
+    }
+
+    cdev_init(&axion_cdev, &axion_dev_fops);
+    ret = cdev_add(&axion_cdev, axion_dev, 1);
+    if (ret < 0) {
+        pr_err("%s: cdev add failed\n", AXION_NAME);
+        unregister_chrdev_region(axion_dev, 1);
+        debugfs_remove(axion_debug_dir);
+        return ret;
+    }
+
+    axion_class = class_create(CLASS_NAME);
+    if (IS_ERR(axion_class)) {
+        pr_err("%s: class creation failed\n", AXION_NAME);
+        cdev_del(&axion_cdev);
+        unregister_chrdev_region(axion_dev, 1);
+        debugfs_remove(axion_debug_dir);
+        return PTR_ERR(axion_class);
+    }
+
+    axion_device = device_create(axion_class, NULL, axion_dev, NULL, DEVICE_NAME);
+    if (IS_ERR(axion_device)) {
+        pr_err("%s: device creation failed\n", AXION_NAME);
+        class_destroy(axion_class);
+        cdev_del(&axion_cdev);
+        unregister_chrdev_region(axion_dev, 1);
+        debugfs_remove(axion_debug_dir);
+        return PTR_ERR(axion_device);
+    }
+
+    axion_stack.pointer = 0;
+    take_snapshot();
+    return 0;
+}
+
+static void __exit axion_exit(void) {
+    device_destroy(axion_class, axion_dev);
+    class_destroy(axion_class);
+    cdev_del(&axion_cdev);
+    unregister_chrdev_region(axion_dev, 1);
+    debugfs_remove(axion_debug_dir);
+    pr_info("%s: exiting\n", AXION_NAME);
+}
+
+module_init(axion_init);
+module_exit(axion_exit);
+MODULE_LICENSE("MIT");
+MODULE_AUTHOR("Axion AI Team");
+MODULE_DESCRIPTION("Axion AI Kernel Module with NLP and Ternary Execution");
