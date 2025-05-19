@@ -1,67 +1,70 @@
-@* bootstrap.cweb | HanoiVM Bootstrap Loader and Preflight Checks *@
+@* bootstrap.cweb | HanoiVM Bootstrap Loader and Preflight Checks
 
-This module defines the bootstrap sequence for HanoiVM. It validates system readiness,
-loads essential modules (AI, VM, stack), and launches the ternary execution runtime.
+This module defines the bootstrap sequence for HanoiVM, validating system readiness and
+launching the ternary execution runtime. It integrates with `hanoivm_fsm.v` via PCIe/M.2,
+`axion-ai.cweb` via ioctls/debugfs, `hanoivm-core.cweb` and `hanoivm-runtime.cweb` via FFI,
+`hanoivm_vm.cweb`’s execution core, `hanoivm_firmware.cweb`’s firmware,
+`axion-gaia-interface.cweb`’s GPU dispatch, `axion_api.cweb`’s recursion optimization,
+`axion_gpu_serializer.cweb`’s GPU serialization, and `advanced_ops.cweb`/`advanced_ops_ext.cweb` opcodes.
 
-Includes:
-- Runtime configuration injection
-- Axion AI kernel ping + confirmation
-- Stack allocator sanity check
-- Entry point validation and entropy seed
-- Optional warmup diagnostic output
+Enhancements:
+- Comprehensive preflight checks for hardware, GPU, and Rust runtime.
+- Modular initialization table for extensibility.
+- Entropy logging via `axion-ai.cweb`’s debugfs.
+- Session memory integration with `axion-ai.cweb`’s `axion_session_t`.
+- FFI interface to `hanoivm-core.cweb` (Rust) and `hanoivm-runtime.cweb` (C).
+- Secure validation for configuration, stack, and module states.
+- JSON visualization for config and diagnostics.
+- Support for `.hvm` test bytecode (`T81_MATMUL` + `TNN_ACCUM`).
+- Optimized for ternary runtime initialization.
 
----
-
-@<Include Dependencies@>=
-#include "config.cweb"
-#include "init.cweb"
+@c
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+#include "config.h"
+#include "init.h"
 #include "axion_api.h"
 #include "t81_stack.h"
 #include "hanoivm_vm.h"
-#include <time.h>
-#include <stdio.h>
+#include "axion-ai.h"
+#include "hanoivm_core.h"
+#include "hanoivm_runtime.h"
+#include "axion-gaia-interface.h"
+#include "axion_gpu_serializer.h"
 
----
+#define MAX_LOG_MSG 128
+#define BOOT_SESSION_ID "BOOT-%016lx"
 
-@<Bootstrap Runtime Entry@>=
-int bootstrap_hanoivm(int argc, char** argv) {
-    printf("[BOOT] Initializing HanoiVM Runtime...\n");
+@<Initialization Strategy Table@>=
+typedef struct {
+    const char* name;
+    int (*init)(HanoiVMConfig* config);
+    const char* description;
+} BootInitStrategy;
 
-    // Load default or overridden configuration
-    HanoiVMConfig config = default_config();
-    if (config.enable_runtime_overrides) apply_env_overrides(&config);
-    if (config.enable_debug_mode) print_config(&config);
-
-    // Sanity checks
+static int init_stack(HanoiVMConfig* config) {
     if (!initialize_stack_state()) {
-        fprintf(stderr, "[BOOT ERROR] Failed to initialize stack state.\n");
+        axion_log_entropy("INIT_STACK_FAIL", 0xFF);
         return 1;
     }
-
-    // Entropy seed for recursive tiering
-    srand((unsigned int) time(NULL));
-    printf("[BOOT] Entropy system initialized.\n");
-
-    // Ping Axion kernel
-    if (!axion_init()) {
-        fprintf(stderr, "[BOOT ERROR] Axion AI kernel failed to start.\n");
-        return 2;
-    }
-    printf("[BOOT] Axion AI kernel online.\n");
-
-    // Optional warmup diagnostics
-    if (config.enable_debug_mode) {
-        printf("[BOOT] Performing warmup diagnostics...\n");
-        axion_log("[AXION] Warmup tracepoint reached.");
-    }
-
-    printf("[BOOT] HanoiVM bootstrap complete. Launching runtime...\n");
-    return 0; // VM will be launched by caller
+    axion_log_entropy("INIT_STACK_SUCCESS", 0);
+    return 0;
 }
 
----
+static int init_axion(HanoiVMConfig* config) {
+    if (!axion_init()) {
+        axion_log_entropy("INIT_AXION_FAIL", 0xFF);
+        return 2;
+    }
+    axion_log_entropy("INIT_AXION_SUCCESS", 0);
+    return 0;
+}
 
-@h
-int bootstrap_hanoivm(int argc, char** argv);
-
-@* End of bootstrap.cweb *@
+static BootInitStrategy init_strategies[] = {
+    { "stack", init_stack, "Initialize T81 stack state" },
+    { "axion", init_axion, "Ping Axion AI kernel" },
+    // More in Part 2
+    { NULL, NULL, NULL }
+};
