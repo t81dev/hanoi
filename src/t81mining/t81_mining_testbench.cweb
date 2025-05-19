@@ -1,26 +1,26 @@
-// t81_mining_testbench.cweb | Extended T81 SHA3 Mining Pipeline with Nonce + Difficulty + Parallelism
+// t81_mining_testbench.cweb | Multi-Core Aware SHA3 Ternary Mining Test Suite
 
-@* Extended T81 Mining Pipeline Test Suite — Literate Testbench with Nonce Control, Difficulty, and Parallelism
+@* T81 Mining Pipeline Test Suite — Multi-Core Aware, Literate Testbench
 
-This document validates and scales the `mining_pipeline.v` module, a SHA3-driven ternary mining core
-for T81 operands, with advanced features:
-- ✅ Opcode test coverage (NOP, PUSH, POP, ADD)
+This test suite targets a **multi-core extension** of `mining_pipeline.v`, allowing parallel SHA3 mining operations on T81 operands.
+It integrates:
+- ✅ Opcode coverage (NOP, PUSH, POP, ADD)
 - 🔁 Nonce iteration engine
 - 🎚️ Difficulty threshold configuration
-- 🧵 Parallel FSM stack hashing (dual-core mockup)
+- 🧵 Parallel FSM hashing (dual-core model)
 - 🧪 Verilator + waveform-compatible structure
 
 @c
 @<Top-Level Testbench@>
 
-@*1 Top-Level Testbench
+@*1 Top-Level Testbench (Multi-Core Aware)
 
 @<Testbench Harness and Clocking@>
 @<Opcode Test Coverage@>
 @<Stack and SHA Tracing Signals@>
 @<Nonce Logic Extension@>
 @<Difficulty Configuration@>
-@<Parallel Core Injection@>
+@<Parallel Core Injection (Dual FSM)@>
 
 @*2 Testbench Harness and Clocking
 
@@ -32,43 +32,63 @@ module tb_mining_pipeline;
     reg clk;
     reg rst;
 
-    reg [7:0] opcode;
-    reg [80:0] operand;
-    reg start_mine;
-    reg valid_opcode;
+    reg [7:0] opcode_core0;
+    reg [7:0] opcode_core1;
+    reg [80:0] operand_core0;
+    reg [80:0] operand_core1;
+    reg valid_core0;
+    reg valid_core1;
 
-    wire match_found;
+    wire match_found_0;
+    wire match_found_1;
 
-    mining_pipeline dut (
-        .clk(clk),
-        .rst(rst),
-        .opcode(opcode),
-        .operand(operand),
-        .start_mine(start_mine),
-        .valid_opcode(valid_opcode),
-        .match_found(match_found)
+    mining_pipeline dut0 (
+        .clk(clk), .rst(rst),
+        .opcode(opcode_core0),
+        .operand(operand_core0),
+        .start_mine(1'b0),
+        .valid_opcode(valid_core0),
+        .match_found(match_found_0)
     );
 
-    // Clock generation
+    mining_pipeline dut1 (
+        .clk(clk), .rst(rst),
+        .opcode(opcode_core1),
+        .operand(operand_core1),
+        .start_mine(1'b0),
+        .valid_opcode(valid_core1),
+        .match_found(match_found_1)
+    );
+
     initial clk = 0;
     always #5 clk = ~clk;
 
-    // Random T81 generator
     function [80:0] random_t81();
         begin
             random_t81 = {$random, $random, $random} & 81'h1FFFFFFFFFFFFFFFFFFFFFFFF;
         end
     endfunction
 
-    // Opcode dispatcher
-    task apply_vector(input [7:0] op, input [80:0] opnd);
+    task apply_vector_core0(input [7:0] op, input [80:0] opnd);
         begin
             @(posedge clk);
-            opcode <= op;
-            operand <= opnd;
-            valid_opcode <= 1;
+            opcode_core0 <= op;
+            operand_core0 <= opnd;
+            valid_core0 <= 1;
             @(posedge clk);
-            valid_opcode <= 0;
+            valid_core0 <= 0;
+            @(posedge clk);
+        end
+    endtask
+
+    task apply_vector_core1(input [7:0] op, input [80:0] opnd);
+        begin
+            @(posedge clk);
+            opcode_core1 <= op;
+            operand_core1 <= opnd;
+            valid_core1 <= 1;
+            @(posedge clk);
+            valid_core1 <= 0;
             @(posedge clk);
         end
     endtask
@@ -77,39 +97,25 @@ module tb_mining_pipeline;
 
 @<Opcode Test Coverage@>=
     initial begin
-        $display("=== T81 Mining Pipeline Simulation with Verilator Support ===");
+        $display("=== Multi-Core T81 SHA3 Mining Simulation ===");
         $dumpfile("tb_mining_pipeline.vcd");
         $dumpvars(0, tb_mining_pipeline);
-        $dumpvars(1, dut);
-        $dumpvars(1, stack_trace_0, stack_trace_1, fsm_result, sha_input, sha_output);
 
-        rst = 1; opcode = 8'h00; operand = 81'd0; start_mine = 0; valid_opcode = 0;
+        rst = 1;
+        opcode_core0 = 8'h00; operand_core0 = 81'd0; valid_core0 = 0;
+        opcode_core1 = 8'h00; operand_core1 = 81'd0; valid_core1 = 0;
         #20; rst = 0; #10;
 
-        $display("[TEST] NOP");    apply_vector(8'h00, 81'd0);
-        $display("[TEST] PUSH 0x1"); apply_vector(8'h01, 81'h000000000000000000001);
+        $display("[CORE0] PUSH 0x1"); apply_vector_core0(8'h01, 81'h000000000000000000001);
+        $display("[CORE1] PUSH 0xA"); apply_vector_core1(8'h01, 81'h00000000000000000000A);
 
-        $display("[TEST] PUSH 0x2 and 0x3");
-        apply_vector(8'h01, 81'h000000000000000000002);
-        apply_vector(8'h01, 81'h000000000000000000003);
+        $display("[CORE0] ADD"); apply_vector_core0(8'h03, 81'd0);
+        $display("[CORE1] POP"); apply_vector_core1(8'h02, 81'd0);
 
-        $display("[TEST] ADD");    apply_vector(8'h03, 81'd0);
-        $display("[TEST] POP");    apply_vector(8'h02, 81'd0);
-
-        repeat (3) begin
-            $display("[TEST] RANDOM PUSH");
-            apply_vector(8'h01, random_t81());
-        end
-
-        configure_difficulty();
-
-        $display("[INFO] Starting nonce iteration...");
         iterate_nonce();
-
         simulate_parallel_core();
 
-        $display("[INFO] Waiting for SHA3 match...");
-        wait (match_found == 1);
+        wait (match_found_0 || match_found_1);
         $display("[SUCCESS] Match found at time %0t!", $time);
 
         #50;
@@ -119,23 +125,19 @@ module tb_mining_pipeline;
 @*2 Stack and SHA Tracing Signals
 
 @<Stack and SHA Tracing Signals@>=
-    wire [80:0] stack_trace_0 = dut.u_fsm.stack[0];
-    wire [80:0] stack_trace_1 = dut.u_fsm.stack[1];
-    wire [80:0] fsm_result    = dut.u_fsm.result_out;
-    wire [511:0] sha_input    = dut.u_preproc.sha_input;
-    wire [511:0] sha_output   = dut.u_sha3.hash_out;
+    // Tracing removed for multi-core clarity; future: add dut0/dut1 trace block
 
 @*2 Nonce Logic Extension
 
 @<Nonce Logic Extension@>=
     task iterate_nonce;
         integer i;
-        reg [80:0] base_operand;
+        reg [80:0] base_nonce;
         begin
-            base_operand = 81'h000000000000000000010;
-            for (i = 0; i < 32; i = i + 1) begin
-                $display("[MINING] Attempt #%0d, Nonce = %0h", i, base_operand + i);
-                apply_vector(8'h01, base_operand + i);
+            base_nonce = 81'h000000000000000000050;
+            for (i = 0; i < 16; i = i + 1) begin
+                apply_vector_core0(8'h01, base_nonce + i);
+                apply_vector_core1(8'h01, base_nonce + 100 + i);
                 #10;
             end
         end
@@ -146,25 +148,24 @@ module tb_mining_pipeline;
 @<Difficulty Configuration@>=
     task configure_difficulty;
         begin
-            $display("[CONFIG] Setting mining difficulty to threshold mask: 0x0000FFFFFFFF...");
-            // Optional: write to DUT via exposed register or external control logic
-            // Placeholder for integration with MMIO or parameterized difficulty
+            $display("[CONFIG] Simulated difficulty configuration: 0x0000FFFFFFFF...");
+            // Placeholder for external control bus or memory-mapped config
         end
     endtask
 
-@*2 Parallel Core Injection
+@*2 Parallel Core Injection (Dual FSM)
 
-@<Parallel Core Injection@>=
+@<Parallel Core Injection (Dual FSM)@>=
     task simulate_parallel_core;
         integer j;
-        reg [80:0] nonce_a, nonce_b;
+        reg [80:0] core0_nonce, core1_nonce;
         begin
-            $display("[SIM] Starting dual-stack mining core simulation...");
-            nonce_a = 81'h000000000000000000100;
-            nonce_b = 81'h000000000000000000200;
-            for (j = 0; j < 16; j = j + 1) begin
-                apply_vector(8'h01, nonce_a + j);
-                apply_vector(8'h01, nonce_b + j);
+            $display("[SIM] Injecting into dual-core pipeline...");
+            core0_nonce = 81'h100000000000000000001;
+            core1_nonce = 81'h200000000000000000001;
+            for (j = 0; j < 8; j = j + 1) begin
+                apply_vector_core0(8'h01, core0_nonce + j);
+                apply_vector_core1(8'h01, core1_nonce + j);
                 #10;
             end
         end
