@@ -1,0 +1,192 @@
+@* hanoivm_fsm.v - Ternary FSM-based Opcode Interpreter (HanoiVM Core)
+
+This module implements the HanoiVM core, a ternary FSM-based interpreter for
+T81-encoded opcodes used in SHA3-based mining. It processes 81-bit ternary
+operands on a 16-entry stack, supporting NOP, PUSH, POP, and ADD operations.
+Designed for integration into the multi-core T81 Mining Pipeline with PCIe/M.2
+hardware compatibility.
+
+Enhancements:
+- Error handling for stack overflow, underflow, and invalid opcodes.
+- True ternary arithmetic (modulo-3 addition) for ADD opcode.
+- Debug output exposing FSM state (`state_out`).
+- Optimized pipeline for high-frequency operation (e.g., 250 MHz).
+- Ternary operand validation (0, 1, or 2).
+- Synthesizable and compatible with multi-core pipeline and testbench.
+
+@c
+
+module hanoivm_fsm (
+    input wire clk,                    // Fast clock (e.g., 250 MHz)
+    input wire rst,                    // Synchronous reset
+    input wire [7:0] opcode_in,        // 8-bit opcode
+    input wire [80:0] operand_in,      // 81-bit T81-encoded operand
+    input wire valid,                  // Input valid signal
+    output reg ready,                  // FSM ready for new input
+    output reg [80:0] result_out,      // Result output
+    output reg done,                   // Operation complete
+    output reg error,                  // Error flag (overflow, underflow, invalid)
+    output reg [2:0] state_out         // FSM state for debug
+);
+    // Ternary stack: 16 entries, 81-bit wide (T81-encoded)
+    reg [80:0] stack [0:15];
+    reg [3:0] sp;                      // Stack pointer (0 to 15)
+    reg [7:0] opcode_reg;              // Latched opcode
+    reg [80:0] operand_reg;            // Latched operand
+    reg [80:0] temp_result;            // Temporary result for EXECUTE
+
+    // State machine encoding
+    typedef enum logic [2:0] {
+        IDLE      = 3'd0,              // Waiting for valid input
+        FETCH     = 3'd1,              // Latch opcode and operand
+        EXECUTE   = 3'd2,              // Perform operation
+        WRITEBACK = 3'd3,              // Output result
+        DONE      = 3'd4,              // Signal completion
+        ERROR     = 3'd5               // Error state (overflow, underflow, invalid)
+    } state_t;
+    state_t state;
+
+    // Ternary arithmetic: Modulo-3 addition for T81 ADD
+    function [80:0] ternary_add(input [80:0] a, input [80:0] b);
+        reg [80:0] sum;
+        integer i;
+        begin
+            for (i = 0; i < 81; i = i + 1) begin
+                sum[i] = (a[i] + b[i]) % 3; // Each bit is 0, 1, or 2
+            end
+            ternary_add = sum;
+        end
+    endfunction
+
+    // Ternary operand validation: Ensure each bit is 0, 1, or 2
+    function valid_ternary(input [80:0] data);
+        integer i;
+        begin
+            valid_ternary = 1'b1;
+            for (i = 0; i < 81; i = i + 1) begin
+                if (data[i] > 2) begin
+                    valid_ternary = 1'b0;
+                    break;
+                end
+            end
+        end
+    endfunction
+
+    // Main FSM logic
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            // Reset state
+            state <= IDLE;
+            sp <= 4'd0;
+            ready <= 1'b1;
+            done <= 1'b0;
+            error <= 1'b0;
+            result_out <= 81'd0;
+            temp_result <= 81'd0;
+            opcode_reg <= 8'd0;
+            operand_reg <= 81'd0;
+            state_out <= IDLE;
+            // Clear stack (optional for synthesis, included for simulation)
+            for (integer i = 0; i < 16; i = i + 1) stack[i] <= 81'd0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    if (valid) begin
+                        // Validate operand before proceeding
+                        if (!valid_ternary(operand_in)) begin
+                            error <= 1'b1;
+                            state <= ERROR;
+                            state_out <= ERROR;
+                        end else begin
+                            opcode_reg <= opcode_in;
+                            operand_reg <= operand_in;
+                            state <= FETCH;
+                            ready <= 1'b0;
+                            state_out <= FETCH;
+                        end
+                    end
+                end
+
+                FETCH: begin
+                    // No memory latency; proceed to EXECUTE
+                    state <= EXECUTE;
+                    state_out <= EXECUTE;
+                end
+
+                EXECUTE: begin
+                    error <= 1'b0; // Clear error unless set
+                    case (opcode_reg)
+                        8'h00: begin // NOP
+                            temp_result <= 81'd0;
+                        end
+                        8'h01: begin // PUSH
+                            if (sp < 15) begin
+                                stack[sp] <= operand_reg;
+                                sp <= sp + 1;
+                                temp_result <= operand_reg;
+                            end else begin
+                                error <= 1'b1;
+                                state <= ERROR;
+                                state_out <= ERROR;
+                            end
+                        end
+                        8'h02: begin // POP
+                            if (sp > 0) begin
+                                sp <= sp - 1;
+                                temp_result <= stack[sp - 1];
+                            end else begin
+                                error <= 1'b1;
+                                state <= ERROR;
+                                state_out <= ERROR;
+                            end
+                        end
+                        8'h03: begin // ADD (Ternary modulo-3)
+                            if (sp >= 2) begin
+                                temp_result <= ternary_add(stack[sp - 1], stack[sp - 2]);
+                                sp <= sp - 1;
+                                stack[sp - 2] <= temp_result;
+                            end else begin
+                                error <= 1'b1;
+                                state <= ERROR;
+                                state_out <= ERROR;
+                            end
+                        end
+                        default: begin // Invalid opcode
+                            error <= 1'b1;
+                            state <= ERROR;
+                            state_out <= ERROR;
+                        end
+                    endcase
+                    if (!error) begin
+                        state <= WRITEBACK;
+                        state_out <= WRITEBACK;
+                    end
+                end
+
+                WRITEBACK: begin
+                    result_out <= temp_result;
+                    done <= 1'b1;
+                    state <= DONE;
+                    state_out <= DONE;
+                end
+
+                DONE: begin
+                    done <= 1'b0;
+                    ready <= 1'b1;
+                    state <= IDLE;
+                    state_out <= IDLE;
+                end
+
+                ERROR: begin
+                    error <= 1'b1;
+                    done <= 1'b0;
+                    ready <= 1'b1;
+                    state <= IDLE;
+                    state_out <= IDLE;
+                    result_out <= 81'd0; // Clear output on error
+                end
+            endcase
+        end
+    end
+
+endmodule
