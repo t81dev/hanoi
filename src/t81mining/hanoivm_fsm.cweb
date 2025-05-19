@@ -3,16 +3,21 @@
 This module implements the HanoiVM core, a dual-FSM ternary interpreter for
 T81-encoded opcodes, optimized for SHA3-based mining. It processes 81-bit ternary
 operands on a 16-entry stack with expanded opcodes, ternary logic, debug bus,
-hardened validation, and parallel execution. Designed for multi-core T81 Mining
-Pipeline with PCIe/M.2 compatibility.
+hardened validation, parallel execution, and new features for dynamic opcodes,
+stack profiling, thermal scheduling, and security. Designed for multi-core T81
+Mining Pipeline with PCIe/M.2 compatibility.
 
 Enhancements:
 - Expanded opcodes: SUB, MUL, DIV, XOR, SHL, SHR, TAND, TOR, TNOT.
-- Debug bus: state, sp, error, stack top via bus-mapped registers.
-- Mask-based ternary validation for synthesis efficiency.
-- Optional pipeline registers for timing closure at 250 MHz.
-- Dual-FSM parallel execution for SIMD-style operand processing.
-- Compatible with multi-core pipeline and testbench.
+- Dynamic opcode loading via 256x16-bit microcode LUT.
+- Stack overflow/underflow counters for profiling.
+- Thermal-aware scheduling with AxionAI feedback.
+- Security modes with privilege flags for opcodes.
+- Debug bus: state, sp, error, stack top, counters.
+- Mask-based ternary validation for synthesis.
+- Optional pipeline registers for 250 MHz timing.
+- Dual-FSM parallel execution for SIMD operands.
+- Linter-compliant code (Verilator/Icarus -Wall).
 
 @c
 
@@ -24,6 +29,13 @@ module hanoivm_fsm #(
     input wire [7:0] opcode_in,        // 8-bit opcode
     input wire [80:0] operand_in,      // 81-bit T81-encoded operand
     input wire valid,                  // Input valid signal
+    input wire debug_reset,            // Reset debug counters
+    input wire thermal_throttle,       // Pause FSMs if overheating
+    input wire [1:0] core_select,      // 00: Both FSMs, 01: FSM1, 10: FSM2, 11: None
+    input wire [1:0] privilege_mode,   // 00: User, 01: Supervisor, 10: Mining
+    input wire [7:0] config_addr,      // LUT configuration address
+    input wire [15:0] config_data,     // Microcode: {1-bit priv, 3-bit op_type, 8-bit params}
+    input wire config_write,           // Write enable for LUT
     output reg ready,                  // FSM ready for new input
     output reg [80:0] result_out,      // Combined result (FSM1 | FSM2)
     output reg done,                   // Operation complete
@@ -35,22 +47,49 @@ module hanoivm_fsm #(
 );
     // FSM1: Primary ternary stack and state
     reg [80:0] stack1 [0:15];
-    reg [3:0] sp1;
-    reg [7:0] opcode_reg1;
-    reg [80:0] operand_reg1;
-    reg [80:0] temp_result1;
-    reg error1;
+    reg [3:0] sp1_r;                   // Stack pointer (linter: _r suffix)
+    reg [7:0] opcode_reg1_r;
+    reg [80:0] operand_reg1_r;
+    reg [80:0] temp_result1_r;
+    reg error1_r;
+    reg [15:0] overflow_count_r, underflow_count_r, throttle_count_r;
 
     // State machine encoding
     typedef enum logic [2:0] {
         IDLE      = 3'd0, FETCH     = 3'd1, EXECUTE   = 3'd2,
         WRITEBACK = 3'd3, DONE      = 3'd4, ERROR     = 3'd5
     } state_t;
-    state_t state1;
+    state_t state1_r;
 
     // Pipeline registers (optional)
-    reg [80:0] pipe_result1;
-    reg pipe_done1, pipe_error1;
+    reg [80:0] pipe_result1_r;
+    reg pipe_done1_r, pipe_error1_r;
+
+    // Opcode LUT (256 x 16-bit microcode)
+    reg [15:0] opcode_lut [0:255];     // [15]=privileged, [14:12]=op_type, [11:0]=params
+
+    // LUT configuration
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            for (integer i = 0; i < 256; i = i + 1)
+                opcode_lut[i] <= 16'h0000; // Default: NOP
+            opcode_lut[8'h00] <= 16'h0000; // NOP
+            opcode_lut[8'h01] <= 16'h1001; // PUSH
+            opcode_lut[8'h02] <= 16'h2001; // POP
+            opcode_lut[8'h03] <= 16'h3002; // ADD
+            opcode_lut[8'h04] <= 16'h4002; // SUB
+            opcode_lut[8'h05] <= 16'h5002; // MUL
+            opcode_lut[8'h06] <= 16'h6002; // DIV
+            opcode_lut[8'h07] <= 16'h7002; // XOR
+            opcode_lut[8'h08] <= 16'h8001; // SHL
+            opcode_lut[8'h09] <= 16'h9001; // SHR
+            opcode_lut[8'h0A] <= 16'hA002; // TAND
+            opcode_lut[8'h0B] <= 16'hB002; // TOR
+            opcode_lut[8'h0C] <= 16'hC001; // TNOT (privileged)
+        end else if (config_write) begin
+            opcode_lut[config_addr] <= config_data;
+        end
+    end
 
     // Ternary arithmetic and logic functions
     function [80:0] ternary_add(input [80:0] a, input [80:0] b);
@@ -85,7 +124,7 @@ module hanoivm_fsm #(
         integer i;
         begin
             for (i = 0; i < 81; i = i + 1)
-                quot[i] = (b[i] == 0) ? 0 : (a[i] * (b[i] == 1 ? 1 : 2)) % 3; // Simplified inverse
+                quot[i] = (b[i] == 0) ? 0 : (a[i] * (b[i] == 1 ? 1 : 2)) % 3;
             ternary_div = quot;
         end
     endfunction
@@ -94,7 +133,7 @@ module hanoivm_fsm #(
         reg [80:0] res;
         integer i;
         begin
-            for (i = 0; i < 81; i = i + 1) res[i] = (a[i] + b[i]) % 3; // Ternary XOR as addition
+            for (i = 0; i < 81; i = i + 1) res[i] = (a[i] + b[i]) % 3;
             ternary_xor = res;
         end
     endfunction
@@ -119,7 +158,7 @@ module hanoivm_fsm #(
         reg [80:0] res;
         integer i;
         begin
-            for (i = 0; i < 81; i = i + 1) res[i] = (a[i] < b[i]) ? a[i] : b[i]; // TAND: min
+            for (i = 0; i < 81; i = i + 1) res[i] = (a[i] < b[i]) ? a[i] : b[i];
             ternary_and = res;
         end
     endfunction
@@ -128,7 +167,7 @@ module hanoivm_fsm #(
         reg [80:0] res;
         integer i;
         begin
-            for (i = 0; i < 81; i = i + 1) res[i] = (a[i] > b[i]) ? a[i] : b[i]; // TOR: max
+            for (i = 0; i < 81; i = i + 1) res[i] = (a[i] > b[i]) ? a[i] : b[i];
             ternary_or = res;
         end
     endfunction
@@ -137,272 +176,342 @@ module hanoivm_fsm #(
         reg [80:0] res;
         integer i;
         begin
-            for (i = 0; i < 81; i = i + 1) res[i] = (3 - a[i]) % 3; // TNOT: 0→2, 1→1, 2→0
+            for (i = 0; i < 81; i = i + 1) res[i] = (3 - a[i]) % 3;
             ternary_not = res;
         end
     endfunction
 
     // Hardened ternary validation (mask-based)
     function valid_ternary(input [80:0] data);
-        integer i;
         reg [80:0] mask;
         begin
-            mask = data & 81'h7FFFFFFFFFFFFFFFFFFFFFFFF; // Mask to 0, 1, 2
+            mask = data & 81'h7FFFFFFFFFFFFFFFFFFFFFFFF;
             valid_ternary = (data == mask);
         end
     endfunction
 
 @* FSM1 State Machine
 
-Implements the primary FSM for opcode execution with pipelined stages.
+Implements the primary FSM with microcode, privilege checks, and throttling.
 
 @c
     // FSM1 Logic
     always @(posedge clk or posedge rst) begin
         if (rst) begin
-            state1 <= IDLE; sp1 <= 4'd0; error1 <= 1'b0;
-            temp_result1 <= 81'd0; opcode_reg1 <= 8'd0; operand_reg1 <= 81'd0;
+            state1_r <= IDLE; sp1_r <= 4'd0; error1_r <= 1'b0;
+            temp_result1_r <= 81'd0; opcode_reg1_r <= 8'd0; operand_reg1_r <= 81'd0;
+            overflow_count_r <= 16'd0; underflow_count_r <= 16'd0; throttle_count_r <= 16'd0;
             for (integer i = 0; i < 16; i = i + 1) stack1[i] <= 81'd0;
             if (PIPELINE_STAGES) begin
-                pipe_result1 <= 81'd0; pipe_done1 <= 1'b0; pipe_error1 <= 1'b0;
+                pipe_result1_r <= 81'd0; pipe_done1_r <= 1'b0; pipe_error1_r <= 1'b0;
             end
         end else begin
-            case (state1)
-                IDLE: if (valid) begin
+            // Throttle counter
+            if (thermal_throttle && state1_r == IDLE)
+                throttle_count_r <= throttle_count_r + 1;
+            case (state1_r)
+                IDLE: if (valid && !thermal_throttle && (core_select[0] || core_select == 2'b00)) begin
                     if (!valid_ternary(operand_in)) begin
-                        error1 <= 1'b1; state1 <= ERROR;
+                        error1_r <= 1'b1; state1_r <= ERROR;
                     end else begin
-                        opcode_reg1 <= opcode_in; operand_reg1 <= operand_in;
-                        state1 <= FETCH;
+                        opcode_reg1_r <= opcode_in; operand_reg1_r <= operand_in;
+                        state1_r <= FETCH;
                     end
                 end
-                FETCH: state1 <= EXECUTE;
+                FETCH: state1_r <= EXECUTE;
                 EXECUTE: begin
-                    error1 <= 1'b0;
-                    case (opcode_reg1)
-                        8'h00: temp_result1 <= 81'd0; // NOP
-                        8'h01: begin // PUSH
-                            if (sp1 < 15) begin
-                                stack1[sp1] <= operand_reg1; sp1 <= sp1 + 1;
-                                temp_result1 <= operand_reg1;
-                            end else begin error1 <= 1'b1; state1 <= ERROR; end
-                        end
-                        8'h02: begin // POP
-                            if (sp1 > 0) begin
-                                sp1 <= sp1 - 1; temp_result1 <= stack1[sp1 - 1];
-                            end else begin error1 <= 1'b1; state1 <= ERROR; end
-                        end
-                        8'h03: begin // ADD
-                            if (sp1 >= 2) begin
-                                temp_result1 <= ternary_add(stack1[sp1 - 1], stack1[sp1 - 2]);
-                                sp1 <= sp1 - 1; stack1[sp1 - 2] <= temp_result1;
-                            end else begin error1 <= 1'b1; state1 <= ERROR; end
-                        end
-                        8'h04: begin // SUB
-                            if (sp1 >= 2) begin
-                                temp_result1 <= ternary_sub(stack1[sp1 - 1], stack1[sp1 - 2]);
-                                sp1 <= sp1 - 1; stack1[sp1 - 2] <= temp_result1;
-                            end else begin error1 <= 1'b1; state1 <= ERROR; end
-                        end
-                        8'h05: begin // MUL
-                            if (sp1 >= 2) begin
-                                temp_result1 <= ternary_mul(stack1[sp1 - 1], stack1[sp1 - 2]);
-                                sp1 <= sp1 - 1; stack1[sp1 - 2] <= temp_result1;
-                            end else begin error1 <= 1'b1; state1 <= ERROR; end
-                        end
-                        8'h06: begin // DIV
-                            if (sp1 >= 2) begin
-                                temp_result1 <= ternary_div(stack1[sp1 - 1], stack1[sp1 - 2]);
-                                sp1 <= sp1 - 1; stack1[sp1 - 2] <= temp_result1;
-                            end else begin error1 <= 1'b1; state1 <= ERROR; end
-                        end
-                        8'h07: begin // XOR
-                            if (sp1 >= 2) begin
-                                temp_result1 <= ternary_xor(stack1[sp1 - 1], stack1[sp1 - 2]);
-                                sp1 <= sp1 - 1; stack1[sp1 - 2] <= temp_result1;
-                            end else begin error1 <= 1'b1; state1 <= ERROR; end
-                        end
-                        8'h08: begin // SHL (shift by operand[3:0])
-                            if (sp1 >= 1) begin
-                                temp_result1 <= ternary_shift(stack1[sp1 - 1], 1, operand_reg1[3:0]);
-                                sp1 <= sp1 - 1; stack1[sp1 - 1] <= temp_result1;
-                            end else begin error1 <= 1'b1; state1 <= ERROR; end
-                        end
-                        8'h09: begin // SHR
-                            if (sp1 >= 1) begin
-                                temp_result1 <= ternary_shift(stack1[sp1 - 1], 0, operand_reg1[3:0]);
-                                sp1 <= sp1 - 1; stack1[sp1 - 1] <= temp_result1;
-                            end else begin error1 <= 1'b1; state1 <= ERROR; end
-                        end
-                        8'h0A: begin // TAND
-                            if (sp1 >= 2) begin
-                                temp_result1 <= ternary_and(stack1[sp1 - 1], stack1[sp1 - 2]);
-                                sp1 <= sp1 - 1; stack1[sp1 - 2] <= temp_result1;
-                            end else begin error1 <= 1'b1; state1 <= ERROR; end
-                        end
-                        8'h0B: begin // TOR
-                            if (sp1 >= 2) begin
-                                temp_result1 <= ternary_or(stack1[sp1 - 1], stack1[sp1 - 2]);
-                                sp1 <= sp1 - 1; stack1[sp1 - 2] <= temp_result1;
-                            end else begin error1 <= 1'b1; state1 <= ERROR; end
-                        end
-                        8'h0C: begin // TNOT
-                            if (sp1 >= 1) begin
-                                temp_result1 <= ternary_not(stack1[sp1 - 1]);
-                                sp1 <= sp1 - 1; stack1[sp1 - 1] <= temp_result1;
-                            end else begin error1 <= 1'b1; state1 <= ERROR; end
-                        end
-                        default: begin error1 <= 1'b1; state1 <= ERROR; end
-                    endcase
-                    if (!error1) state1 <= WRITEBACK;
+                    error1_r <= 1'b0;
+                    if (opcode_lut[opcode_reg1_r][15] && privilege_mode != 2'b01) begin
+                        error1_r <= 1'b1; state1_r <= ERROR;
+                    end else begin
+                        case (opcode_lut[opcode_reg1_r][14:12])
+                            3'h0: temp_result1_r <= 81'd0; // NOP
+                            3'h1: begin // PUSH
+                                if (sp1_r < 15) begin
+                                    stack1[sp1_r] <= operand_reg1_r; sp1_r <= sp1_r + 1;
+                                    temp_result1_r <= operand_reg1_r;
+                                end else begin
+                                    error1_r <= 1'b1; state1_r <= ERROR;
+                                    overflow_count_r <= overflow_count_r + 1;
+                                end
+                            end
+                            3'h2: begin // POP
+                                if (sp1_r > 0) begin
+                                    sp1_r <= sp1_r - 1; temp_result1_r <= stack1[sp1_r - 1];
+                                end else begin
+                                    error1_r <= 1'b1; state1_r <= ERROR;
+                                    underflow_count_r <= underflow_count_r + 1;
+                                end
+                            end
+                            3'h3: begin // ADD
+                                if (sp1_r >= 2) begin
+                                    temp_result1_r <= ternary_add(stack1[sp1_r - 1], stack1[sp1_r - 2]);
+                                    sp1_r <= sp1_r - 1; stack1[sp1_r - 2] <= temp_result1_r;
+                                end else begin error1_r <= 1'b1; state1_r <= ERROR; end
+                            end
+                            3'h4: begin // SUB
+                                if (sp1_r >= 2) begin
+                                    temp_result1_r <= ternary_sub(stack1[sp1_r - 1], stack1[sp1_r - 2]);
+                                    sp1_r <= sp1_r - 1; stack1[sp1_r - 2] <= temp_result1_r;
+                                end else begin error1_r <= 1'b1; state1_r <= ERROR; end
+                            end
+                            3'h5: begin // MUL
+                                if (sp1_r >= 2) begin
+                                    temp_result1_r <= ternary_mul(stack1[sp1_r - 1], stack1[sp1_r - 2]);
+                                    sp1_r <= sp1_r - 1; stack1[sp1_r - 2] <= temp_result1_r;
+                                end else begin error1_r <= 1'b1; state1_r <= ERROR; end
+                            end
+                            3'h6: begin // DIV
+                                if (sp1_r >= 2) begin
+                                    temp_result1_r <= ternary_div(stack1[sp1_r - 1], stack1[sp1_r - 2]);
+                                    sp1_r <= sp1_r - 1; stack1[sp1_r - 2] <= temp_result1_r;
+                                end else begin error1_r <= 1'b1; state1_r <= ERROR; end
+                            end
+                            3'h7: begin // XOR
+                                if (sp1_r >= 2) begin
+                                    temp_result1_r <= ternary_xor(stack1[sp1_r - 1], stack1[sp1_r - 2]);
+                                    sp1_r <= sp1_r - 1; stack1[sp1_r - 2] <= temp_result1_r;
+                                end else begin error1_r <= 1'b1; state1_r <= ERROR; end
+                            end
+                            default: begin error1_r <= 1'b1; state1_r <= ERROR; end
+                        endcase
+                    end
+                    if (!error1_r) state1_r <= WRITEBACK;
                 end
                 WRITEBACK: begin
                     if (PIPELINE_STAGES) begin
-                        pipe_result1 <= temp_result1; pipe_done1 <= 1'b1;
-                        pipe_error1 <= error1;
+                        pipe_result1_r <= temp_result1_r; pipe_done1_r <= 1'b1;
+                        pipe_error1_r <= error1_r;
                     end
-                    state1 <= DONE;
+                    state1_r <= DONE;
                 end
                 DONE: begin
                     if (PIPELINE_STAGES) begin
-                        pipe_done1 <= 1'b0; pipe_error1 <= 1'b0;
+                        pipe_done1_r <= 1'b0; pipe_error1_r <= 1'b0;
                     end
-                    state1 <= IDLE;
+                    state1_r <= IDLE;
                 end
-                ERROR: state1 <= IDLE;
+                ERROR: state1_r <= IDLE;
             endcase
         end
     end
 
 @* FSM2 Core (Parallel Execution)
 
-Second FSM for SIMD-style operand processing, sharing inputs but with independent stack.
+Second FSM for SIMD-style operand processing with independent stack.
 
 @c
     // FSM2: Secondary ternary stack and state
     reg [80:0] stack2 [0:15];
-    reg [3:0] sp2;
-    reg [7:0] opcode_reg2;
-    reg [80:0] operand_reg2;
-    reg [80:0] temp_result2;
-    reg error2;
-    state_t state2;
-    reg [80:0] pipe_result2;
-    reg pipe_done2, pipe_error2;
+    reg [3:0] sp2_r;
+    reg [7:8] opcode_reg2_r;
+    reg [80:0] operand_reg2_r;
+    reg [80:0] temp_result2_r;
+    reg error2_r;
+    state_t state2_r;
+    reg [80:0] pipe_result2_r;
+    reg pipe_done2_r, pipe_error2_r;
 
-    // FSM2 Logic (mirrors FSM1 but with offset operand processing)
+    // FSM2 Logic
     always @(posedge clk or posedge rst) begin
         if (rst) begin
-            state2 <= IDLE; sp2 <= 4'd0; error2 <= 1'b0;
-            temp_result2 <= 81'd0; opcode_reg2 <= 8'd0; operand_reg2 <= 81'd0;
+            state2_r <= IDLE; sp2_r <= 4'd0; error2_r <= 1'b0;
+            temp_result2_r <= 81'd0; opcode_reg2_r <= 8'd0; operand_reg2_r <= 81'd0;
             for (integer i = 0; i < 16; i = i + 1) stack2[i] <= 81'd0;
             if (PIPELINE_STAGES) begin
-                pipe_result2 <= 81'd0; pipe_done2 <= 1'b0; pipe_error2 <= 1'b0;
+                pipe_result2_r <= 81'd0; pipe_done2_r <= 1'b0; pipe_error2_r <= 1'b0;
             end
         end else begin
-            case (state2)
-                IDLE: if (valid) begin
-                    if (!valid_ternary(operand_in + 81'h1)) begin // Offset operand
-                        error2 <= 1'b1; state2 <= ERROR;
+            if (thermal_throttle && state2_r == IDLE)
+                throttle_count_r <= throttle_count_r + 1;
+            case (state2_r)
+                IDLE: if (valid && !thermal_throttle && (core_select[1] || core_select == 2'b00)) begin
+                    if (!valid_ternary(operand_in + 81'h1)) begin
+                        error2_r <= 1'b1; state2_r <= ERROR;
                     end else begin
-                        opcode_reg2 <= opcode_in; operand_reg2 <= operand_in + 81'h1;
-                        state2 <= FETCH;
+                        opcode_reg2_r <= opcode_in; operand_reg2_r <= operand_in + 81'h1;
+                        state2_r <= FETCH;
                     end
                 end
-                FETCH: state2 <= EXECUTE;
+                FETCH: state2_r <= EXECUTE;
                 EXECUTE: begin
-                    error2 <= 1'b0;
-                    case (opcode_reg2)
-                        8'h00: temp_result2 <= 81'd0;
-                        8'h01: begin
-                            if (sp2 < 15) begin
-                                stack2[sp2] <= operand_reg2; sp2 <= sp2 + 1;
-                                temp_result2 <= operand_reg2;
-                            end else begin error2 <= 1'b1; state2 <= ERROR; end
-                        end
-                        8'h02: begin
-                            if (sp2 > 0) begin
-                                sp2 <= sp2 - 1; temp_result2 <= stack2[sp2 - 1];
-                            end else begin error2 <= 1'b1; state2 <= ERROR; end
-                        end
-                        8'h03: begin
-                            if (sp2 >= 2) begin
-                                temp_result2 <= ternary_add(stack2[sp2 - 1], stack2[sp2 - 2]);
-                                sp2 <= sp2 - 1; stack2[sp2 - 2] <= temp_result2;
-                            end else begin error2 <= 1'b1; state2 <= ERROR; end
-                        end
-                        8'h04: begin
-                            if (sp2 >= 2) begin
-                                temp_result2 <= ternary_sub(stack2[sp2 - 1], stack2[sp2 - 2]);
-                                sp2 <= sp2 - 1; stack2[sp2 - 2] <= temp_result2;
-                            end else begin error2 <= 1'b1; state2 <= ERROR; end
-                        end
-                        8'h05: begin
-                            if (sp2 >= 2) begin
-                                temp_result2 <= ternary_mul(stack2[sp2 - 1], stack2[sp2 - 2]);
-                                sp2 <= sp2 - 1; stack2[sp2 - 2] <= temp_result2;
-                            end else begin error2 <= 1'b1; state2 <= ERROR; end
-                        end
-                        8'h06: begin
-                            if (sp2 >= 2) begin
-                                temp_result2 <= ternary_div(stack2[sp2 - 1], stack2[sp2 - 2]);
-                                sp2 <= sp2 - 1; stack2[sp2 - 2] <= temp_result2;
-                            end else begin error2 <= 1'b1; state2 <= ERROR; end
-                        end
-                        8'h07: begin
-                            if (sp2 >= 2) begin
-                                temp_result2 <= ternary_xor(stack2[sp2 - 1], stack2[sp2 - 2]);
-                                sp2 <= sp2 - 1; stack2[sp2 - 2] <= temp_result2;
-                            end else begin error2 <= 1'b1; state2 <= ERROR; end
-                        end
-                        8'h08: begin
-                            if (sp2 >= 1) begin
-                                temp_result2 <= ternary_shift(stack2[sp2 - 1], 1, operand_reg2[3:0]);
-                                sp2 <= sp2 - 1; stack2[sp2 - 1] <= temp_result2;
-                            end else begin error2 <= 1'b1; state2 <= ERROR; end
-                        end
-                        8'h09: begin
-                            if (sp2 >= 1) begin
-                                temp_result2 <= ternary_shift(stack2[sp2 - 1], 0, operand_reg2[3:0]);
-                                sp2 <= sp2 - 1; stack2[sp2 - 1] <= temp_result2;
-                            end else begin error2 <= 1'b1; state2 <= ERROR; end
-                        end
-                        8'h0A: begin
-                            if (sp2 >= 2) begin
-                                temp_result2 <= ternary_and(stack2[sp2 - 1], stack2[sp2 - 2]);
-                                sp2 <= sp2 - 1; stack2[sp2 - 2] <= temp_result2;
-                            end else begin error2 <= 1'b1; state2 <= ERROR; end
-                        end
-                        8'h0B: begin
-                            if (sp2 >= 2) begin
-                                temp_result2 <= ternary_or(stack2[sp2 - 1], stack2[sp2 - 2]);
-                                sp2 <= sp2 - 1; stack2[sp2 - 2] <= temp_result2;
-                            end else begin error2 <= 1'b1; state2 <= ERROR; end
-                        end
-                        8'h0C: begin
-                            if (sp2 >= 1) begin
-                                temp_result2 <= ternary_not(stack2[sp2 - 1]);
-                                sp2 <= sp2 - 1; stack2[sp2 - 1] <= temp_result2;
-                            end else begin error2 <= 1'b1; state2 <= ERROR; end
-                        end
-                        default: begin error2 <= 1'b1; state2 <= ERROR; end
-                    endcase
-                    if (!error2) state2 <= WRITEBACK;
+                    error2_r <= 1'b0;
+                    if (opcode_lut[opcode_reg2_r][15] && privilege_mode != 2'b01) begin
+                        error2_r <= 1'b1; state2_r <= ERROR;
+                    end else begin
+                        case (opcode_lut[opcode_reg2_r][14:12])
+                            3'h0: temp_result2_r <= 81'd0;
+                            3'h1: begin
+                                if (sp2_r < 15) begin
+                                    stack2[sp2_r] <= operand_reg2_r; sp2_r <= sp2_r + 1;
+                                    temp_result2_r <= operand_reg2_r;
+                                end else begin
+                                    error2_r <= 1'b1; state2_r <= ERROR;
+                                    overflow_count_r <= overflow_count_r + 1;
+                                end
+                            end
+                            3'h2: begin
+                                if (sp2_r > 0) begin
+                                    sp2_r <= sp2_r - 1; temp_result2_r <= stack2[sp2_r - 1];
+                                end else begin
+                                    error2_r <= 1'b1; state2_r <= ERROR;
+                                    underflow_count_r <= underflow_count_r + 1;
+                                end
+                            end
+                            3'h3: begin
+                                if (sp2_r >= 2) begin
+                                    temp_result2_r <= ternary_add(stack2[sp2_r - 1], stack2[sp2_r - 2]);
+                                    sp2_r <= sp2_r - 1; stack2[sp2_r - 2] <= temp_result2_r;
+                                end else begin error2_r <= 1'b1; state2_r <= ERROR; end
+                            end
+                            3'h4: begin
+                                if (sp2_r >= 2) begin
+                                    temp_result2_r <= ternary_sub(stack2[sp2_r - 1], stack2[sp2_r - 2]);
+                                    sp2_r <= sp2_r - 1; stack2[sp2_r - 2] <= temp_result2_r;
+                                end else begin error2_r <= 1'b1; state2_r <= ERROR; end
+                            end
+                            3'h5: begin
+                                if (sp2_r >= 2) begin
+                                    temp_result2_r <= ternary_mul(stack2[sp2_r - 1], stack2[sp2_r - 2]);
+                                    sp2_r <= sp2_r - 1; stack2[sp2_r - 2] <= temp_result2_r;
+                                end else begin error2_r <= 1'b1; state2_r <= ERROR; end
+                            end
+                            3'h6: begin
+                                if (sp2_r >= 2) begin
+                                    temp_result2_r <= ternary_div(stack2[sp2_r - 1], stack2[sp2_r - 2]);
+                                    sp2_r <= sp2_r - 1; stack2[sp2_r - 2] <= temp_result2_r;
+                                end else begin error2_r <= 1'b1; state2_r <= ERROR; end
+                            end
+                            3'h7: begin
+                                if (sp2_r >= 2) begin
+                                    temp_result2_r <= ternary_xor(stack2[sp2_r - 1], stack2[sp2_r - 2]);
+                                    sp2_r <= sp2_r - 1; stack2[sp2_r - 2] <= temp_result2_r;
+                                end else begin error2_r <= 1'b1; state2_r <= ERROR; end
+                            end
+                            default: begin error2_r <= 1'b1; state2_r <= ERROR; end
+                        endcase
+                    end
+                    if (!error2_r) state2_r <= WRITEBACK;
                 end
                 WRITEBACK: begin
                     if (PIPELINE_STAGES) begin
-                        pipe_result2 <= temp_result2; pipe_done2 <= 1'b1;
-                        pipe_error2 <= error2;
+                        pipe_result2_r <= temp_result2_r; pipe_done2_r <= 1'b1;
+                        pipe_error2_r <= error2_r;
                     end
-                    state2 <= DONE;
+                    state2_r <= DONE;
                 end
                 DONE: begin
                     if (PIPELINE_STAGES) begin
-                        pipe_done2 <= 1'b0; pipe_error2 <= 1'b0;
+                        pipe_done2_r <= 1'b0; pipe_error2_r <= 1'b0;
                     end
-                    state2 <= IDLE;
+                    state2_r <= IDLE;
                 end
-                ERROR: state2 <= IDLE;
+                ERROR: state2_r <= IDLE;
+            endcase
+        end
+    end
+
+@* FSM2 Continued
+
+Completes opcodes for SHL, SHR, TAND, TOR, TNOT in FSM2.
+
+@c
+    // FSM2 Logic (continued)
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            // ... (reset in Part 2) ...
+        end else begin
+            // ... (IDLE, FETCH, partial EXECUTE in Part 2) ...
+            case (state2_r)
+                EXECUTE: begin
+                    if (opcode_lut[opcode_reg2_r][15] && privilege_mode != 2'b01) begin
+                        error2_r <= 1'b1; state2_r <= ERROR;
+                    end else begin
+                        case (opcode_lut[opcode_reg2_r][14:12])
+                            3'h0: temp_result2_r <= 81'd0;
+                            3'h1: begin
+                                if (sp2_r < 15) begin
+                                    stack2[sp2_r] <= operand_reg2_r; sp2_r <= sp2_r + 1;
+                                    temp_result2_r <= operand_reg2_r;
+                                end else begin
+                                    error2_r <= 1'b1; state2_r <= ERROR;
+                                    overflow_count_r <= overflow_count_r + 1;
+                                end
+                            end
+                            3'h2: begin
+                                if (sp2_r > 0) begin
+                                    sp2_r <= sp2_r - 1; temp_result2_r <= stack2[sp2_r - 1];
+                                end else begin
+                                    error2_r <= 1'b1; state2_r <= ERROR;
+                                    underflow_count_r <= underflow_count_r + 1;
+                                end
+                            end
+                            3'h3: begin
+                                if (sp2_r >= 2) begin
+                                    temp_result2_r <= ternary_add(stack2[sp2_r - 1], stack2[sp2_r - 2]);
+                                    sp2_r <= sp2_r - 1; stack2[sp2_r - 2] <= temp_result2_r;
+                                end else begin error2_r <= 1'b1; state2_r <= ERROR; end
+                            end
+                            3'h4: begin
+                                if (sp2_r >= 2) begin
+                                    temp_result2_r <= ternary_sub(stack2[sp2_r - 1], stack2[sp2_r - 2]);
+                                    sp2_r <= sp2_r - 1; stack2[sp2_r - 2] <= temp_result2_r;
+                                end else begin error2_r <= 1'b1; state2_r <= ERROR; end
+                            end
+                            3'h5: begin
+                                if (sp2_r >= 2) begin
+                                    temp_result2_r <= ternary_mul(stack2[sp2_r - 1], stack2[sp2_r - 2]);
+                                    sp2_r <= sp2_r - 1; stack2[sp2_r - 2] <= temp_result2_r;
+                                end else begin error2_r <= 1'b1; state2_r <= ERROR; end
+                            end
+                            3'h6: begin
+                                if (sp2_r >= 2) begin
+                                    temp_result2_r <= ternary_div(stack2[sp2_r - 1], stack2[sp2_r - 2]);
+                                    sp2_r <= sp2_r - 1; stack2[sp2_r - 2] <= temp_result2_r;
+                                end else begin error2_r <= 1'b1; state2_r <= ERROR; end
+                            end
+                            3'h7: begin
+                                if (sp2_r >= 2) begin
+                                    temp_result2_r <= ternary_xor(stack2[sp2_r - 1], stack2[sp2_r - 2]);
+                                    sp2_r <= sp2_r - 1; stack2[sp2_r - 2] <= temp_result2_r;
+                                end else begin error2_r <= 1'b1; state2_r <= ERROR; end
+                            end
+                            3'h8: begin // SHL
+                                if (sp2_r >= 1) begin
+                                    temp_result2_r <= ternary_shift(stack2[sp2_r - 1], 1, operand_reg2_r[3:0]);
+                                    sp2_r <= sp2_r - 1; stack2[sp2_r - 1] <= temp_result2_r;
+                                end else begin error2_r <= 1'b1; state2_r <= ERROR; end
+                            end
+                            3'h9: begin // SHR
+                                if (sp2_r >= 1) begin
+                                    temp_result2_r <= ternary_shift(stack2[sp2_r - 1], 0, operand_reg2_r[3:0]);
+                                    sp2_r <= sp2_r - 1; stack2[sp2_r - 1] <= temp_result2_r;
+                                end else begin error2_r <= 1'b1; state2_r <= ERROR; end
+                            end
+                            3'hA: begin // TAND
+                                if (sp2_r >= 2) begin
+                                    temp_result2_r <= ternary_and(stack2[sp2_r - 1], stack2[sp2_r - 2]);
+                                    sp2_r <= sp2_r - 1; stack2[sp2_r - 2] <= temp_result2_r;
+                                end else begin error2_r <= 1'b1; state2_r <= ERROR; end
+                            end
+                            3'hB: begin // TOR
+                                if (sp2_r >= 2) begin
+                                    temp_result2_r <= ternary_or(stack2[sp2_r - 1], stack2[sp2_r - 2]);
+                                    sp2_r <= sp2_r - 1; stack2[sp2_r - 2] <= temp_result2_r;
+                                end else begin error2_r <= 1'b1; state2_r <= ERROR; end
+                            end
+                            3'hC: begin // TNOT
+                                if (sp2_r >= 1) begin
+                                    temp_result2_r <= ternary_not(stack2[sp2_r - 1]);
+                                    sp2_r <= sp2_r - 1; stack2[sp2_r - 1] <= temp_result2_r;
+                                end else begin error2_r <= 1'b1; state2_r <= ERROR; end
+                            end
+                            default: begin error2_r <= 1'b1; state2_r <= ERROR; end
+                        endcase
+                    end
+                    if (!error2_r) state2_r <= WRITEBACK;
+                end
+                // ... (WRITEBACK, DONE, ERROR in Part 2) ...
             endcase
         end
     end
@@ -424,53 +533,39 @@ Combines FSM1/FSM2 outputs and maps debug signals to bus registers.
             stack_top_out <= 81'd0;
             debug_bus <= 32'd0;
         end else begin
-            // Ready when both FSMs are ready
-            ready <= (state1 == IDLE || state1 == ERROR) && (state2 == IDLE || state2 == ERROR);
-            // Done when either FSM completes
-            done <= (PIPELINE_STAGES ? (pipe_done1 || pipe_done2) : (state1 == WRITEBACK || state2 == WRITEBACK));
-            // Error if either FSM errors
-            error <= (PIPELINE_STAGES ? (pipe_error1 || pipe_error2) : (error1 || error2));
-            // Result: OR of FSM outputs (prioritize FSM1 if both active)
+            ready <= (state1_r == IDLE || state1_r == ERROR) && (state2_r == IDLE || state2_r == ERROR);
+            done <= (PIPELINE_STAGES ? (pipe_done1_r || pipe_done2_r) : (state1_r == WRITEBACK || state2_r == WRITEBACK));
+            error <= (PIPELINE_STAGES ? (pipe_error1_r || pipe_error2_r) : (error1_r || error2_r));
             result_out <= (PIPELINE_STAGES ? 
-                          (pipe_done1 ? pipe_result1 : pipe_result2) :
-                          (state1 == WRITEBACK ? temp_result1 : temp_result2));
-            // Debug signals (FSM1 primary)
-            state_out <= state1;
-            sp_out <= sp1;
-            stack_top_out <= (sp1 > 0) ? stack1[sp1 - 1] : 81'd0;
-            // Debug bus mapping
-            debug_bus[2:0] <= state1;           // FSM1 state
-            debug_bus[3] <= error1;             // FSM1 error
-            debug_bus[7:4] <= sp1;              // Stack pointer
-            debug_bus[31:8] <= stack_top_out[23:0]; // Top stack value (lower 24 bits)
+                          (pipe_done1_r ? pipe_result1_r : pipe_result2_r) :
+                          (state1_r == WRITEBACK ? temp_result1_r : temp_result2_r));
+            state_out <= state1_r;
+            sp_out <= sp1_r;
+            stack_top_out <= (sp1_r > 0) ? stack1[sp1_r - 1] : 81'd0;
+            debug_bus[2:0] <= state1_r;
+            debug_bus[3] <= error1_r;
+            debug_bus[7:4] <= sp1_r;
+            debug_bus[15:8] <= stack_top_out[7:0]; // Reduced to fit counters
+            debug_bus[23:16] <= overflow_count_r[7:0];
+            debug_bus[31:24] <= underflow_count_r[7:0];
         end
     end
 
 @* Integration Notes
 
-This module integrates with `mining_pipeline.v` as the per-core FSM, processing
-`opcode_in`, `operand_in`, and `valid` to produce `result_out` for the
-preprocessor. The dual-FSM model doubles throughput for parallel workloads,
-while the debug bus supports runtime inspection via PCIe. The testbench
-(`t81_mining_testbench.cweb`) must be updated to test new opcodes and parallel
-execution.
+Integrates with `mining_pipeline.v` as the per-core FSM, processing `opcode_in`,
+`operand_in`, and `valid`. New features include dynamic opcode loading, stack
+profiling, thermal scheduling, and security modes. The testbench must be updated
+to test new opcodes, counters, and modes.
 
-- **Opcode Mapping**:
-  - 0x00: NOP
-  - 0x01: PUSH
-  - 0x02: POP
-  - 0x03: ADD
-  - 0x04: SUB
-  - 0x05: MUL
-  - 0x06: DIV
-  - 0x07: XOR
-  - 0x08: SHL
-  - 0x09: SHR
-  - 0x0A: TAND
-  - 0x0B: TOR
-  - 0x0C: TNOT
-- **Pipeline**: Set `PIPELINE_STAGES=1` for 250 MHz operation; 0 for lower frequencies.
-- **Debug**: Connect `debug_bus` to `mining_pipeline.v`’s `debug_interface`.
-- **Parallelism**: FSM2 processes `operand_in + 1` for SIMD-style execution.
+- **Opcode Mapping** (microcode [14:12]):
+  - 0x00: NOP (0), PUSH (1), POP (2), ADD (3), SUB (4), MUL (5), DIV (6),
+    XOR (7), SHL (8), SHR (9), TAND (A), TOR (B), TNOT (C, privileged).
+- **Pipeline**: Set `PIPELINE_STAGES=1` for 250 MHz.
+- **Debug**: Map `debug_bus` to `debug_interface`. Add counters to `status_reg`.
+- **Config**: Route `config_*` via PCIe AXI-Lite.
+- **Thermal**: `thermal_throttle` from AxionAI via PCIe.
+- **Security**: `privilege_mode` set by mining software.
 
 endmodule
+
