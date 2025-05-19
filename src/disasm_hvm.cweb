@@ -146,3 +146,90 @@ void disasm_operand(FILE* in, uint64_t* addr) {
     }
 }
 
+@<Core Disassembler Function@>=
+int disassemble_hvm(const char* path) {
+    FILE* f = fopen(path, "rb");
+    if (!f) {
+        fprintf(stderr, "[ERROR] Failed to open file: %s (%s)\n", path, strerror(errno));
+        axion_log_entropy("DISASM_OPEN_FAIL", errno);
+        return -1;
+    }
+    char session_id[32];
+    snprintf(session_id, sizeof(session_id), "DISASM-%016lx", (uint64_t)f);
+    axion_register_session(session_id);
+    uint64_t addr = 0;
+    uint8_t op;
+    while (fread(&op, 1, 1, f) == 1) {
+        const char* opname = decode_opcode(op);
+        fprintf(DEBUG_OUTPUT, "0x%08llX: %s", addr, opname);
+        if (VERBOSE_DISASSEMBLE) {
+            fprintf(DEBUG_OUTPUT, " [raw: 0x%02X]", op);
+        }
+        addr++;
+        for (int i = 0; opcodes[i].name; i++) {
+            if (opcodes[i].opcode == op && opcodes[i].operand_count > 0) {
+                fprintf(DEBUG_OUTPUT, " ");
+                for (int j = 0; j < opcodes[i].operand_count; j++) {
+                    disasm_operand(f, &addr);
+                    if (j < opcodes[i].operand_count - 1) fprintf(DEBUG_OUTPUT, ", ");
+                }
+                fseek(f, opcodes[i].operand_size, SEEK_CUR);
+                addr += opcodes[i].operand_size;
+                break;
+            }
+        }
+        fprintf(DEBUG_OUTPUT, "\n");
+        axion_log_entropy("DISASM_OPCODE", op);
+    }
+    fclose(f);
+    axion_log_entropy("DISASM_COMPLETE", addr & 0xFF);
+    return 0;
+}
+
+@<Visualization Hook@>=
+void disasm_visualize(const char* path, char* out_json, size_t max_len) {
+    FILE* f = fopen(path, "rb");
+    if (!f) return;
+    size_t len = snprintf(out_json, max_len, "{\"bytecode\": [");
+    uint64_t addr = 0;
+    uint8_t op;
+    while (fread(&op, 1, 1, f) == 1 && len < max_len) {
+        len += snprintf(out_json + len, max_len - len,
+                        "{\"addr\": \"0x%08llX\", \"opcode\": \"%s\", \"raw\": \"0x%02X\"},",
+                        addr, decode_opcode(op), op);
+        addr++;
+        for (int i = 0; opcodes[i].name; i++) {
+            if (opcodes[i].opcode == op) {
+                fseek(f, opcodes[i].operand_size, SEEK_CUR);
+                addr += opcodes[i].operand_size;
+                break;
+            }
+        }
+    }
+    if (len > 0 && out_json[len-1] == ',') len--;
+    len += snprintf(out_json + len, max_len - len, "]}");
+    fclose(f);
+    axion_log_entropy("VISUALIZE_DISASM", len & 0xFF);
+}
+
+@<Integration Hook@>=
+void disasm_integrate(const char* path) {
+    disassemble_hvm(path);
+    char json[512];
+    disasm_visualize(path, json, sizeof(json));
+    fprintf(DEBUG_OUTPUT, "[DISASM] JSON Output: %s\n", json);
+    GaiaRequest req = { .tbin = (uint8_t*)json, .tbin_len = strlen(json), .intent = GAIA_T729_DOT };
+    cuda_handle_request(req);
+    axion_log_entropy("DISASM_INTEGRATE", req.intent);
+}
+
+@<Main Function@>=
+int main(int argc, char** argv) {
+    if (argc != 2) {
+        fprintf(stderr, "Usage: %s <hvm_binary_file>\n", argv[0]);
+        return 1;
+    }
+    disasm_integrate(argv[1]);
+    return 0;
+}
+
