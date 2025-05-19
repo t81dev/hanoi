@@ -1,0 +1,272 @@
+@* T81 Mining Pipeline — Literate Verilog Documentation
+
+This document describes the T81 Mining Pipeline — a ternary-aware architecture designed
+to perform SHA3-based mining on T81-encoded data using HanoiVM.
+
+It includes the FSM interpreter, ternary preprocessor, SHA3 hash core (stub), and a
+mining controller module. This is designed for integration into PCIe/M.2 hardware.
+
+@c
+
+@<T81 FSM Interpreter@>
+@<T81 Preprocessor (SHA3 Prep)@>
+@<SHA3 Core (Stub)@>
+@<Mining Controller@>
+@<Top-Level Mining Pipeline@>
+
+@*1 T81 FSM Interpreter
+
+The FSM core handles incoming opcodes and operates on a ternary 81-bit stack.
+It supports basic stack manipulation and arithmetic.
+
+@<T81 FSM Interpreter@>=
+module hanoivm_fsm(
+    input clk,
+    input rst,
+    input [7:0] opcode_in,
+    input [80:0] operand_in,
+    input valid,
+    output reg ready,
+    output reg [80:0] result_out,
+    output reg done
+);
+
+    reg [80:0] stack [0:15];
+    reg [3:0] sp;
+
+    typedef enum logic [2:0] {
+        IDLE = 3'd0,
+        FETCH = 3'd1,
+        EXECUTE = 3'd2,
+        WRITEBACK = 3'd3,
+        DONE = 3'd4
+    } state_t;
+
+    state_t state;
+    reg [7:0] opcode_reg;
+    reg [80:0] operand_reg;
+    reg [80:0] temp_result;
+
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            state <= IDLE;
+            sp <= 0;
+            ready <= 1;
+            done <= 0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    if (valid) begin
+                        opcode_reg <= opcode_in;
+                        operand_reg <= operand_in;
+                        state <= FETCH;
+                        ready <= 0;
+                    end
+                end
+                FETCH: begin
+                    state <= EXECUTE;
+                end
+                EXECUTE: begin
+                    case (opcode_reg)
+                        8'h00: temp_result <= 81'd0;
+                        8'h01: begin
+                            stack[sp] <= operand_reg;
+                            sp <= sp + 1;
+                            temp_result <= operand_reg;
+                        end
+                        8'h02: begin
+                            if (sp > 0) begin
+                                sp <= sp - 1;
+                                temp_result <= stack[sp - 1];
+                            end else begin
+                                temp_result <= 81'd0;
+                            end
+                        end
+                        8'h03: begin
+                            if (sp >= 2) begin
+                                temp_result <= stack[sp - 1] + stack[sp - 2];
+                                sp <= sp - 1;
+                                stack[sp - 2] <= temp_result;
+                            end else begin
+                                temp_result <= 81'd0;
+                            end
+                        end
+                        default: temp_result <= 81'd0;
+                    endcase
+                    state <= WRITEBACK;
+                end
+                WRITEBACK: begin
+                    result_out <= temp_result;
+                    done <= 1;
+                    state <= DONE;
+                end
+                DONE: begin
+                    done <= 0;
+                    ready <= 1;
+                    state <= IDLE;
+                end
+            endcase
+        end
+    end
+
+endmodule
+
+@*1 T81 Preprocessor (SHA3 Prep)
+
+Converts 81-bit ternary input into a 512-bit SHA3 input block using naive encoding.
+
+@<T81 Preprocessor (SHA3 Prep)@>=
+module t81_preprocessor (
+    input wire clk,
+    input wire rst,
+    input wire [80:0] t81_operand,
+    input wire valid,
+    output reg ready,
+    output reg [511:0] sha_input,
+    output reg done
+);
+
+    reg [511:0] buffer;
+    integer i;
+
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            buffer <= 0;
+            sha_input <= 0;
+            ready <= 1;
+            done <= 0;
+        end else if (valid) begin
+            ready <= 0;
+            done <= 0;
+            for (i = 0; i < 81; i = i + 1) begin
+                case (t81_operand[i])
+                    1'b0: buffer[(i*2)+:2] <= 2'b00;
+                    1'b1: buffer[(i*2)+:2] <= 2'b01;
+                    default: buffer[(i*2)+:2] <= 2'b10;
+                endcase
+            end
+            for (i = 162; i < 512; i = i + 1) begin
+                buffer[i] <= t81_operand[i % 81] ^ i[0];
+            end
+            sha_input <= buffer;
+            done <= 1;
+        end else begin
+            ready <= 1;
+            done <= 0;
+        end
+    end
+
+endmodule
+
+@*1 SHA3 Core (Stub)
+
+Stub implementation of SHA3-512 for simulation/testing.
+
+@<SHA3 Core (Stub)@>=
+module sha3_core (
+    input clk,
+    input rst,
+    input [511:0] data_in,
+    input start,
+    output reg [511:0] hash_out,
+    output reg done
+);
+
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            done <= 0;
+            hash_out <= 0;
+        end else if (start) begin
+            hash_out <= data_in ^ 512'hC0DEC0DEC0DEC0DEC0DEC0DEC0DEC0DE;
+            done <= 1;
+        end else begin
+            done <= 0;
+        end
+    end
+
+endmodule
+
+@*1 Mining Controller
+
+This module handles comparison logic; nonce iteration will be added later.
+
+@<Mining Controller@>=
+module mining_controller (
+    input clk,
+    input rst,
+    input start,
+    input [511:0] hash_in,
+    output reg match_found
+);
+
+    reg [511:0] threshold = 512'h00000FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
+
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            match_found <= 0;
+        end else if (start) begin
+            if (hash_in < threshold) begin
+                match_found <= 1;
+            end else begin
+                match_found <= 0;
+            end
+        end
+    end
+
+endmodule
+
+@*1 Top-Level Mining Pipeline
+
+Integrates FSM, SHA3 preprocessor, hash core, and controller into one unit.
+
+@<Top-Level Mining Pipeline@>=
+module mining_pipeline (
+    input wire clk,
+    input wire rst,
+    input wire [7:0] opcode,
+    input wire [80:0] operand,
+    input wire start_mine,
+    input wire valid_opcode,
+    output wire match_found
+);
+
+    wire [80:0] result;
+    wire fsm_done;
+    wire [511:0] sha_input;
+    wire preproc_done;
+    wire preproc_ready;
+    wire [511:0] hash_out;
+    wire sha_done;
+
+    hanoivm_fsm u_fsm (
+        .clk(clk), .rst(rst),
+        .opcode_in(opcode), .operand_in(operand),
+        .valid(valid_opcode),
+        .ready(), .result_out(result), .done(fsm_done)
+    );
+
+    t81_preprocessor u_preproc (
+        .clk(clk), .rst(rst),
+        .t81_operand(result),
+        .valid(fsm_done),
+        .ready(preproc_ready),
+        .sha_input(sha_input),
+        .done(preproc_done)
+    );
+
+    sha3_core u_sha3 (
+        .clk(clk), .rst(rst),
+        .data_in(sha_input),
+        .start(preproc_done),
+        .hash_out(hash_out),
+        .done(sha_done)
+    );
+
+    mining_controller u_ctrl (
+        .clk(clk), .rst(rst),
+        .start(sha_done),
+        .hash_in(hash_out),
+        .match_found(match_found)
+    );
+
+endmodule
