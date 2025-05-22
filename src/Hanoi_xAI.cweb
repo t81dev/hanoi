@@ -1,0 +1,139 @@
+@* HanoiVM xAI Demo.
+
+This module demonstrates HanoiVM's ternary computing for xAI, processing
+a research query with ternary logic, entropy-driven ranking, and 3D
+visualization. It integrates with |tisc_query_compiler.cweb| and
+|ternary_coprocessor.cweb| to showcase symbolic AI enhancements for Grok.
+
+@p
+#include "tisc_query_compiler.h"
+#include "t81graph.h"
+#include "t729tensor.h"
+#include "FrameSceneBuilder.h"
+#include "ternary_coprocessor.h"
+
+@d MAX_CANDIDATES 8
+
+@q
+  ▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒
+  HanoiVM xAI Demo
+  ▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒
+@>
+
+@*1 Data Structures.
+
+Define the demo context.
+
+@<Define DemoContext@> =
+typedef struct {
+    TISCQuery *query;
+    AIResponseCandidate candidates[MAX_CANDIDATES];
+    float entropy_scores[MAX_CANDIDATES];
+    int candidate_count;
+    T81Graph *reasoning_graph;
+    FrameSceneBuilder *visualizer;
+    TernaryCoProcessor *tcp;
+} DemoContext;
+
+@*1 Initialization.
+
+Initialize the demo context.
+
+@<Initialize DemoContext@> =
+DemoContext *init_demo_context(const char *input) {
+    TernaryCoProcessor *tcp = init_tcp_emulated();
+    DemoContext *ctx = (DemoContext *)malloc(sizeof(DemoContext));
+    if (!ctx) { free_tcp(tcp); return NULL; }
+    ctx->query = init_tisc_query(input);
+    ctx->candidate_count = 0;
+    ctx->reasoning_graph = tcp_create_graph(tcp);
+    ctx->visualizer = init_frame_scene_builder();
+    ctx->tcp = tcp;
+    return ctx;
+}
+
+@*1 Process Query.
+
+Compile and execute the query, generating candidates.
+
+@<Process demo query@> =
+void process_demo_query(DemoContext *ctx) {
+    compile_to_tisc(ctx->query, ctx->tcp);
+    T81SearchResult *results = tcp_execute_query(ctx->tcp, ctx->query);
+    ctx->candidate_count = MIN(results->count, MAX_CANDIDATES);
+    for (int i = 0; i < ctx->candidate_count; ++i) {
+        ctx->candidates[i] = results->items[i];
+        ctx->entropy_scores[i] = tcp_evaluate_entropy(ctx->tcp, &ctx->candidates[i]);
+        tcp_update_graph(ctx->tcp, ctx->reasoning_graph, &ctx->candidates[i]);
+    }
+    free_search_results(results);
+}
+
+@*1 Select Response.
+
+Select the highest-entropy response.
+
+@<Select demo response@> =
+AIResponse *select_demo_response(DemoContext *ctx) {
+    if (ctx->candidate_count == 0) return NULL;
+    int best_idx = 0;
+    float max_entropy = ctx->entropy_scores[0];
+    for (int i = 1; i < ctx->candidate_count; ++i) {
+        if (ctx->entropy_scores[i] > max_entropy) {
+            max_entropy = ctx->entropy_scores[i];
+            best_idx = i;
+        }
+    }
+    AIResponse *response = (AIResponse *)malloc(sizeof(AIResponse));
+    response->text = strdup(ctx->candidates[best_idx].text);
+    response->entropy = max_entropy;
+    return response;
+}
+
+@*1 Visualize Reasoning.
+
+Render the reasoning graph in 3D.
+
+@<Visualize demo reasoning@> =
+void visualize_demo_reasoning(DemoContext *ctx) {
+    fsb_render_graph(ctx->visualizer, ctx->reasoning_graph, ctx->query->entropy_score);
+}
+
+@*1 Main Demo.
+
+Run the demo for a query.
+
+@<Run xAI demo@> =
+AIResponse *run_xai_demo(const char *query) {
+    DemoContext *ctx = init_demo_context(query);
+    if (!ctx) return NULL;
+    process_demo_query(ctx);
+    AIResponse *response = select_demo_response(ctx);
+    visualize_demo_reasoning(ctx);
+    free_demo_context(ctx);
+    return response;
+}
+
+@*1 Cleanup.
+
+Free demo resources.
+
+@<Free DemoContext@> =
+void free_demo_context(DemoContext *ctx) {
+    if (ctx) {
+        free_tisc_query(ctx->query);
+        tcp_free_graph(ctx->tcp, ctx->reasoning_graph);
+        free_frame_scene_builder(ctx->visualizer);
+        for (int i = 0; i < ctx->candidate_count; ++i) {
+            free(ctx->candidates[i].text);
+        }
+        free_tcp(ctx->tcp);
+        free(ctx);
+    }
+}
+
+@*1 TODO:
+- Add real-time co-processor simulation.
+- Support multiple queries for batch processing.
+- Integrate with xAI API for live Grok testing.
+@>
