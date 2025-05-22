@@ -56,6 +56,12 @@ def TXOR3 : T81InstBase<"txor3"> {
   let AsmString = "txor3 $dst, $src1, $src2";
 }
 
+def TNEG : T81InstBase<"tneg"> {
+  let OutOperandList = (outs T81Reg:$dst);
+  let InOperandList  = (ins T81Reg:$src);
+  let AsmString = "tneg $dst, $src";
+}
+
 //===----------------------------------------------------------------------===//
 // Control Flow
 //===----------------------------------------------------------------------===//
