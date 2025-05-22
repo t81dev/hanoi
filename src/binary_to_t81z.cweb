@@ -1,5 +1,3 @@
-See new posts
-
 @* Binary to T81Z Compressor *@
 This program converts binary input (from a file or stdin) into a ternary sequence (trits: -1, 0, +1), compresses it using RLE or Huffman coding, and outputs a T81Z file with metadata and CRC32 checksum. It supports command-line options for input/output files, compression method, and bit-to-trit chunk size.
 @c#include <stdio.h>
