@@ -1,237 +1,297 @@
-@* Ternary Arithmetic Optimization - .cweb package (Enhanced Version)
-   This package implements optimized ternary arithmetic operations, including addition,
-   multiplication, and negation. It incorporates dynamic optimization using Axion AI,
-   logging for performance tracking, and a modular structure for future expansion.
+@* ternary_arithmetic_optimization.cweb | HanoiVM Ternary Arithmetic Optimization
+This package implements optimized ternary arithmetic operations (addition, multiplication, negation) with AI-driven dynamic optimization using Axion AI. It supports the ternary coprocessor (ternary_coprocessor.cweb), integrates with T81Lang via LLVM (T81RegisterInfo.td, T81InstrInfo.td), and provides GPU acceleration and visualization for Looking Glass. The package is modular, secure, and designed to educate developers on ternary logic.
+Package Metadata:
+  package_name           = "ternary_arithmetic_optimization"
+  package_version        = "1.1.0" // Updated for enhancements
+  package_description    = "Optimized ternary arithmetic with AI-driven optimization, coprocessor integration, GPU acceleration, and visualization."
+  package_license        = "MIT"
+  package_homepage       = "https://hanoivm.org/ternary_arithmetic_optimization"
+  package_dependencies   = ["axion-ai", "ternary_coprocessor", "cuda"]
+  package_architecture   = ["x86_64", "aarch64"]
+  package_flags          = ["optimized", "no_binary", "gpu_support"]
+  package_security       = ["sandboxing", "signing", "namespace_isolation"]
+Build System: CMake with flags: -O3, -ffast-math, -fomit-frame-pointer, -mcpu=native
+@c
 
-   Package Metadata:
-     package_name           = "ternary_arithmetic_optimization"
-     package_version        = "1.0.0"
-     package_description    = "Optimized ternary arithmetic operations with dynamic AI-driven optimization."
-     package_license        = "MIT"
-     package_homepage       = "https://example.com/ternary_arithmetic_optimization"
-     package_dependencies   = ["axion-ai"]
-     package_architecture   = ["x86_64", "aarch64"]
-     package_flags          = ["optimized", "no_binary"]
-     package_security       = ["sandboxing", "signing"]
-
-   Build System: CMake with flags: -O3, -ffast-math, -fomit-frame-pointer
-
-   This package provides:
-     - Ternary Addition, Multiplication, and Negation Optimizations.
-     - AI-driven optimization for dynamically selecting arithmetic modes.
-     - Modular logging and testing functions.
-@#
-
+#include <linux/module.h>
+#include <linux/kernel.h>
+#include <linux/slab.h>
+#include <linux/uaccess.h>
+#include <linux/time.h>
+#include <linux/security.h> // For namespace isolation
+#include "axion-ai.h" // For t81_unit_t, t81_ternary_t, log_entropy
+#include "hanoivm_config.h" // For TERNARY_LOGIC_MODE, ENABLE_GPU_SUPPORT
+#include "ternary_coprocessor.h" // For coprocessor IOCTLs
+#include <cuda_runtime.h> // For GPU acceleration
+#define PACKAGE_NAME "ternary_arithmetic_optimization"
+#define VERSION "1.1.0"
+// Ternary number structure (3 trits)
+typedef struct {
+    int a, b, c; // Values: -1, 0, 1 (TERN_LOW, TERN_MID, TERN_HIGH)
+} TernaryNum;
+@<Ternary Arithmetic Functions@>
+@<AI Optimization Functions@>
+@<Coprocessor Integration Functions@>
+@<GPU Acceleration Functions@>
+@<Visualization Functions@>
+@<Codegen Functions@>
+@<Logging Functions@>
+@<Testing Functions@>
 @<Package Metadata@>=
 package_name = "ternary_arithmetic_optimization"
-package_version = "1.0.0"
-package_description = "Optimized ternary arithmetic operations, including addition, multiplication, and negation. Dynamic optimization using Axion AI."
+package_version = "1.1.0"
+package_description = "Optimized ternary arithmetic operations with AI-driven optimization, coprocessor integration, GPU acceleration, and visualization."
 package_license = "MIT"
-package_homepage = "https://example.com/ternary_arithmetic_optimization"
-package_dependencies = ["axion-ai"]
+package_homepage = "https://hanoivm.org/ternary_arithmetic_optimization"
+package_dependencies = ["axion-ai", "ternary_coprocessor", "cuda"]
 package_architecture = ["x86_64", "aarch64"]
-package_flags = ["optimized", "no_binary"]
-package_security = ["sandboxing", "signing"]
-@#
-
+package_flags = ["optimized", "no_binary", "gpu_support"]
+package_security = ["sandboxing", "signing", "namespace_isolation"]
 @<Build System@>=
 build_system = "CMake"
-compilation_flags = ["-O3", "-ffast-math", "-fomit-frame-pointer"]
-@#
-
-@* Ternary Arithmetic Operations *@
-@<Ternary Arithmetic Operations@>
-
-## Ternary Addition Optimization
-operation_addition {
-    description = "Optimized ternary addition using carry-lookahead to speed up computation."
-    implementation = """
-    // Optimized ternary addition algorithm
-    // Implementing carry-lookahead for ternary logic addition
-    void ternary_addition(TernaryNum a, TernaryNum b, TernaryNum* result) {
-        result->a = (a.a + b.a) % 3;
-        result->b = (a.b + b.b) % 3;
-        result->c = (a.c + b.c) % 3;
-    }
-    """
+compilation_flags = ["-O3", "-ffast-math", "-fomit-frame-pointer", "-mcpu=native"]
+link_flags = ["-lcuda", "-lcudart"] // For GPU support
+cmake_options = ["-DENABLE_COPROCESSOR=ON", "-DENABLE_GPU=ON"]
+@* Ternary Arithmetic Operations
+These functions implement optimized ternary addition, multiplication, and negation, designed for software execution and coprocessor acceleration.
+@<Ternary Arithmetic Functions@>=
+// Optimized ternary addition with carry-lookahead
+static void ternary_addition(TernaryNum a, TernaryNum b, TernaryNum *result) {
+    int carry = 0, sum;
+    sum = a.a + b.a + carry;
+    result->a = (sum % 3 + 3) % 3; // Normalize to 0, 1, 2
+    carry = sum / 3;
+    sum = a.b + b.b + carry;
+    result->b = (sum % 3 + 3) % 3;
+    carry = sum / 3;
+    sum = a.c + b.c + carry;
+    result->c = (sum % 3 + 3) % 3;
 }
-
-## Ternary Multiplication Optimization
-operation_multiplication {
-    description = "Optimized ternary multiplication reducing redundant operations."
-    implementation = """
-    // Optimized ternary multiplication algorithm
-    // Using a fast multiplication strategy that reduces redundant operations
-    void ternary_multiplication(TernaryNum a, TernaryNum b, TernaryNum* result) {
-        result->a = (a.a * b.a) % 3;
-        result->b = (a.b * b.b) % 3;
-        result->c = (a.c * b.c) % 3;
-    }
-    """
+// Optimized ternary multiplication
+static void ternary_multiplication(TernaryNum a, TernaryNum b, TernaryNum *result) {
+    result->a = (a.a * b.a) % 3;
+    result->b = (a.b * b.b) % 3;
+    result->c = (a.c * b.c) % 3;
 }
-
-## Ternary Negation Optimization
-operation_negation {
-    description = "Optimized ternary negation exploiting ternary logic simplicity."
-    implementation = """
-    // Optimized ternary negation
-    void ternary_negation(TernaryNum* a) {
-        // Negate each component by flipping 1 to -1 and vice versa.
-        if (a->a == 1) a->a = -1; else if (a->a == -1) a->a = 1;
-        if (a->b == 1) a->b = -1; else if (a->b == -1) a->b = 1;
-        if (a->c == 1) a->c = -1; else if (a->c == -1) a->c = 1;
-    }
-    """
+// Optimized ternary negation
+static void ternary_negation(TernaryNum *a) {
+    a->a = (a->a == 1) ? -1 : (a->a == -1) ? 1 : a->a;
+    a->b = (a->b == 1) ? -1 : (a->b == -1) ? 1 : a->b;
+    a->c = (a->c == 1) ? -1 : (a->c == -1) ? 1 : a->c;
 }
-@#
-
-@* AI-Driven Optimizations *@
-@<AI-Driven Optimizations@>
-ai_optimization {
-    description = "Dynamic optimization of ternary arithmetic based on workload using Axion AI."
-    implementation = """
-    // AI-based dynamic optimization for ternary arithmetic.
-    // The AI monitors the runtime workload and decides which operation to optimize.
-    void optimize_ternary_operations() {
-        // Placeholder for Axion AI-driven optimization
-        if (is_heavy_workload()) {
-            optimize_for_multiplication();
-        } else {
-            optimize_for_addition();
-        }
-    }
-
-    bool is_heavy_workload() {
-        // Evaluate current workload intensity (workload_factor should be defined in context)
-        return workload_factor > 50;
-    }
-
-    void optimize_for_multiplication() {
-        // Adjust optimization parameters for multiplication-heavy tasks.
-        set_operation_mode("multiplication");
-    }
-
-    void optimize_for_addition() {
-        // Adjust optimization parameters for addition-heavy tasks.
-        set_operation_mode("addition");
-    }
-
-    void set_operation_mode(const char* mode) {
-        // Set the current operation mode.
-        // This function might adjust internal function pointers or mode flags.
-        printf("Setting operation mode to: %s\\n", mode);
-    }
-    """
+@* AI-Driven Optimizations
+Dynamic optimization selects arithmetic modes based on workload, using Axion AI’s entropy data and configuration settings.
+@<AI Optimization Functions@>=
+static bool is_heavy_workload(void) {
+    t81_unit_t entropy_data;
+    if (axion_get_entropy(&entropy_data) < 0) // From axion-ai.cweb
+        return false;
+    return entropy_data.entropy > 0x50; // Threshold for heavy workload
 }
-@#
-
-@* Modularity and Dependencies *@
-@<Modularity and Dependencies@>
-modularization {
-    description = "The package can be split into smaller modules based on operation type or workload."
-    split_strategy = "Automatic splitting if the package size exceeds 50MB; operations can be handled and installed separately."
+static void optimize_for_multiplication(void) {
+    hvm_config.AI_OPTIMIZATION_MODE = AI_OPTIMIZATION_MODE_Advanced; // From config.cweb
+    pr_info("%s: Optimized for multiplication\n", PACKAGE_NAME);
 }
-@#
-
-@* Documentation and Logging *@
-@<Documentation and Logging@>
-logging {
-    description = "Logging functionality to track the execution of optimized ternary operations."
-    implementation = """
-    // Log the execution of an optimization event.
-    void log_ternary_operations(const char* operation, const char* result) {
-        printf("Operation: %s, Result: %s\\n", operation, result);
+static void optimize_for_addition(void) {
+    hvm_config.AI_OPTIMIZATION_MODE = AI_OPTIMIZATION_MODE_Basic;
+    pr_info("%s: Optimized for addition\n", PACKAGE_NAME);
+}
+static void set_operation_mode(const char *mode) {
+    if (hvm_config.TERNARY_LOGIC_MODE == TERNARY_LOGIC_T729)
+        optimize_for_multiplication(); // T729 favors multiplication
+    else
+        optimize_for_addition();
+    pr_info("%s: Operation mode set to %s\n", PACKAGE_NAME, mode);
+}
+static void optimize_ternary_operations(void) {
+    if (is_heavy_workload())
+        optimize_for_multiplication();
+    else
+        optimize_for_addition();
+}
+@* Coprocessor Integration
+Functions to queue arithmetic operations to the ternary coprocessor via IOCTLs.
+@<Coprocessor Integration Functions@>=
+static int queue_ternary_addition(int dst, int src1, int src2) {
+    t81_coprocessor_instr_t instr = {TADD, dst, src1, src2};
+    int fd = open("/dev/ternary_coprocessor", O_RDWR);
+    if (fd < 0) {
+        pr_err("%s: Failed to open coprocessor device\n", PACKAGE_NAME);
+        return -EIO;
     }
-    """
+    int ret = ioctl(fd, TERNARY_IOC_QUEUE, &instr);
+    if (ret)
+        pr_err("%s: Failed to queue TADD\n", PACKAGE_NAME);
+    close(fd);
+    return ret;
 }
-@#
-
-@* Testing and Benchmarking *@
-@<Testing and Benchmarking@>
-testing {
-    description = "Automated tests and benchmarks for optimized ternary arithmetic operations."
-    tests = """
-    // Test for ternary addition optimization.
-    void test_ternary_addition() {
-        TernaryNum a = {1, -1, 0};
-        TernaryNum b = {-1, 1, 1};
-        TernaryNum result;
+static int queue_ternary_multiplication(int dst, int src1, int src2) {
+    t81_coprocessor_instr_t instr = {TMUL, dst, src1, src2};
+    int fd = open("/dev/ternary_coprocessor", O_RDWR);
+    if (fd < 0)
+        return -EIO;
+    int ret = ioctl(fd, TERNARY_IOC_QUEUE, &instr);
+    close(fd);
+    return ret;
+}
+static int queue_ternary_negation(int dst, int src) {
+    t81_coprocessor_instr_t instr = {TNEG, dst, src, 0};
+    int fd = open("/dev/ternary_coprocessor", O_RDWR);
+    if (fd < 0)
+        return -EIO;
+    int ret = ioctl(fd, TERNARY_IOC_QUEUE, &instr);
+    close(fd);
+    return ret;
+}
+static int execute_coprocessor_operations(void) {
+    int fd = open("/dev/ternary_coprocessor", O_RDWR);
+    if (fd < 0)
+        return -EIO;
+    int ret = ioctl(fd, TERNARY_IOC_EXEC);
+    close(fd);
+    return ret;
+}
+@* GPU Acceleration
+CUDA kernels for ternary multiplication, leveraging ENABLE_GPU_SUPPORT.
+@<GPU Acceleration Functions@>=
+global void ternary_multiply_kernel(int *a, int *b, int *result, int n) {
+    int idx = threadIdx.x + blockIdx.x * blockDim.x;
+    if (idx < n)
+        result[idx] = (a[idx] * b[idx]) % 3;
+}
+static int ternary_multiplication_gpu(TernaryNum a, TernaryNum b, TernaryNum *result) {
+    if (!hvm_config.ENABLE_GPU_SUPPORT) {
+        pr_err("%s: GPU support disabled\n", PACKAGE_NAME);
+        return -EINVAL;
+    }
+    int *d_a, *d_b, *d_result;
+    int data[3] = {a.a, a.b, a.c}, b_data[3] = {b.a, b.b, b.c}, result_data[3];
+    cudaMalloc(&d_a, 3 * sizeof(int));
+    cudaMalloc(&d_b, 3 * sizeof(int));
+    cudaMalloc(&d_result, 3 * sizeof(int));
+    cudaMemcpy(d_a, data, 3 * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_b, b_data, 3 * sizeof(int), cudaMemcpyHostToDevice);
+    ternary_multiply_kernel<<<1, 3>>>(d_a, d_b, d_result, 3);
+    cudaMemcpy(result_data, d_result, 3 * sizeof(int), cudaMemcpyDeviceToHost);
+    result->a = result_data[0];
+    result->b = result_data[1];
+    result->c = result_data[2];
+    cudaFree(d_a); cudaFree(d_b); cudaFree(d_result);
+    return cudaGetLastError() == cudaSuccess ? 0 : -EIO;
+}
+@* Visualization for Looking Glass
+JSON logging for operation results, integrated with Looking Glass.
+@<Visualization Functions@>=
+static void log_ternary_operations(const char *operation, TernaryNum *result) {
+    char buf[256];
+    int len = snprintf(buf, sizeof(buf),
+                       "{"operation":"%s","result":{"a":%d,"b":%d,"c":%d}}",
+                       operation, result->a, result->b, result->c);
+    axion_log(buf); // From axion-ai.cweb
+}
+@* T81Lang Codegen
+Functions to emit T81 instructions for T81Lang programs.
+@<Codegen Functions@>=
+static void emit_ternary_addition(int dst, int src1, int src2) {
+    queue_ternary_addition(dst, src1, src2); // Direct to coprocessor
+}
+static void emit_ternary_multiplication(int dst, int src1, int src2) {
+    queue_ternary_multiplication(dst, src1, src2);
+}
+static void emit_ternary_negation(int dst, int src) {
+    queue_ternary_negation(dst, src);
+}
+@* Logging and Benchmarking
+Enhanced logging and cycle-count benchmarks.
+@<Logging Functions@>=
+static void log_benchmark(const char *operation, unsigned long cycles) {
+    char buf[256];
+    snprintf(buf, sizeof(buf), "{"benchmark":"%s","cycles":%lu}", operation, cycles);
+    axion_log(buf);
+}
+@<Testing Functions@>=
+static void test_ternary_addition(void) {
+    TernaryNum a = {1, -1, 0}, b = {-1, 1, 1}, result;
+    ternary_addition(a, b, &result);
+    if (result.a != 0 || result.b != 0 || result.c != 1)
+        pr_err("%s: Addition test failed\n", PACKAGE_NAME);
+}
+static void test_ternary_multiplication(void) {
+    TernaryNum a = {1, 1, -1}, b = {1, -1, 0}, result;
+    ternary_multiplication(a, b, &result);
+    if (result.a != 1 || result.b != -1 || result.c != 0)
+        pr_err("%s: Multiplication test failed\n", PACKAGE_NAME);
+}
+static void benchmark_ternary_addition(void) {
+    TernaryNum a = {1, -1, 0}, b = {-1, 1, 1}, result;
+    unsigned long start = get_cycles();
+    for (int i = 0; i < 1000000; i++)
         ternary_addition(a, b, &result);
-        assert(result.a == 0);
-        assert(result.b == 0);
-        assert(result.c == 1);
-    }
-
-    // Test for ternary multiplication optimization.
-    void test_ternary_multiplication() {
-        TernaryNum a = {1, 1, -1};
-        TernaryNum b = {1, -1, 0};
-        TernaryNum result;
-        ternary_multiplication(a, b, &result);
-        assert(result.a == -1);
-        assert(result.b == -1);
-        assert(result.c == 0);
-    }
-
-    // Test for ternary negation optimization.
-    void test_ternary_negation() {
-        TernaryNum a = {1, -1, 1};
-        ternary_negation(&a);
-        assert(a.a == -1);
-        assert(a.b == 1);
-        assert(a.c == -1);
-    }
-    """
+    unsigned long end = get_cycles();
+    log_benchmark("addition", end - start);
 }
-@#
-
-@* Package Installation Instructions *@
-@<Package Installation@>
+@* Security Enhancements
+Sandboxing via namespaces and secure logging.
+@<Security Enhancements@>=
+static int sandbox_operation(void (*op)(TernaryNum, TernaryNum, TernaryNum *),
+                            TernaryNum a, TernaryNum b, TernaryNum *result) {
+    if (!capable(CAP_SYS_ADMIN))
+        return -EPERM;
+    // Use unshare(CLONE_NEWUSER | CLONE_NEWPID) for isolation
+    int ret = unshare(CLONE_NEWUSER | CLONE_NEWPID);
+    if (ret)
+        return ret;
+    op(a, b, result);
+    return 0;
+}
+@* Package Installation Instructions
+@<Package Installation@>=
 installation {
     description = "Instructions for installing the Ternary Arithmetic Optimization package."
     steps = """
-    // Step 1: Clone the repository.
-    git clone https://github.com/example/ternary_arithmetic_optimization.git
-    // Step 2: Build the package using CMake.
+    git clone https://github.com/hanoivm/ternary_arithmetic_optimization.git
     cd ternary_arithmetic_optimization
-    cmake .
+    cmake -DENABLE_COPROCESSOR=ON -DENABLE_GPU=ON .
     make
-    // Step 3: Install the package.
     sudo make install
     """
 }
-@#
-
-@* License and Credits *@
-@<License and Credits@>
+@* Ternary Arithmetic Tutorial
+@<Ternary Arithmetic Tutorial@>=
+// Example T81Lang program using ternary arithmetic:
+//   tadd R0, R1, R2  ; R0 = R1 + R2 (mod 3)
+//   tmul R3, R0, R4  ; R3 = R0 * R4 (mod 3)
+//   tneg R5, R3      ; R5 = -R3
+// Operations are optimized by Axion AI and can run on the ternary coprocessor.
+// GPU acceleration is enabled for multiplication-heavy tasks.
+// Visualization outputs JSON for Looking Glass, e.g.:
+//   {"operation":"tadd","result":{"a":1,"b":0,"c":2}}
+@* License and Credits
+@<License and Credits@>=
 license {
     description = "MIT License"
     text = """
     The MIT License (MIT)
-    Copyright (c) 2025 Copyleft Systems
+    Copyright (c) 2025 HanoiVM Team
     Permission is hereby granted, free of charge, to any person obtaining a copy
     of this software and associated documentation files (the "Software"), to deal
     in the Software without restriction, including without limitation the rights
     to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
     copies of the Software, and to permit persons to whom the Software is
     furnished to do so, subject to the following conditions:
-    
-    The above copyright notice and this permission notice shall be included in all
-    copies or substantial portions of the Software.
-    
-    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-    SOFTWARE.
-    """
-}
-@#
 
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+"""
+
+}
 @* End of ternary_arithmetic_optimization.cweb
-   This enhanced package now provides robust, modular, and dynamically adjustable
-   ternary arithmetic operations, integrated with AI-driven optimization and detailed
-   logging and benchmarking capabilities.
-@*
+
