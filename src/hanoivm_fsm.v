@@ -1,4 +1,5 @@
 // hanoivm_fsm.v - Ternary FSM-based opcode interpreter (HanoiVM core)
+// Aligned with DevTernary.c for VirtualBox PDM device emulation
 module hanoivm_fsm (
     input clk,
     input rst,
@@ -8,7 +9,7 @@ module hanoivm_fsm (
     output reg ready,
     output reg [161:0] result_out, // 81-trit result
     output reg done,
-    output reg error // Error flag (e.g., stack overflow, invalid opcode)
+    output reg [4:0] error // Enhanced: 5-bit error code (was 1-bit)
 );
 
     // Ternary stack: 81 trits per entry, encoded as 2 bits/trit (162 bits)
@@ -34,18 +35,28 @@ module hanoivm_fsm (
     localparam TRIT_WIDTH = 2;
     localparam TRIT_COUNT = 81;
 
+    // Error codes (aligned with DevTernary.c)
+    localparam ERROR_NONE = 5'h00;
+    localparam ERROR_STACK_OVERFLOW = 5'h04;  // Matches STATUS_ERROR_STACK_OVERFLOW
+    localparam ERROR_STACK_UNDERFLOW = 5'h08; // Matches STATUS_ERROR_STACK_UNDERFLOW
+    localparam ERROR_INVALID_OPCODE = 5'h10;  // Matches STATUS_ERROR_INVALID_COMMAND
+
     // Ternary addition (balanced ternary)
-    function automatic [TRIT_WIDTH-1:0] ternary_add(input [TRIT_WIDTH-1:0] a, b, input carry_in, output carry_out);
+    function automatic [TRIT_WIDTH-1:0] ternary_add(
+        input [TRIT_WIDTH-1:0] a, b, 
+        input [TRIT_WIDTH-1:0] carry_in, 
+        output [TRIT_WIDTH-1:0] carry_out
+    );
         reg [2:0] a_val, b_val, sum;
         a_val = (a == TRIT_NEGONE) ? -1 : (a == TRIT_ONE) ? 1 : 0;
         b_val = (b == TRIT_NEGONE) ? -1 : (b == TRIT_ONE) ? 1 : 0;
-        sum = a_val + b_val + carry_in;
-        carry_out = 0;
+        sum = a_val + b_val + ((carry_in == TRIT_NEGONE) ? -1 : (carry_in == TRIT_ONE) ? 1 : 0);
+        carry_out = TRIT_ZERO;
         if (sum < -1) begin
-            carry_out = -1;
+            carry_out = TRIT_NEGONE;
             sum = sum + 3;
         end else if (sum > 1) begin
-            carry_out = 1;
+            carry_out = TRIT_ONE;
             sum = sum - 3;
         end
         return (sum == -1) ? TRIT_NEGONE : (sum == 1) ? TRIT_ONE : TRIT_ZERO;
@@ -64,13 +75,24 @@ module hanoivm_fsm (
         return (a_val < b_val) ? a : b;
     endfunction
 
+    // Ternary SHA3 placeholder (aligned with DevTernary.c)
+    function automatic [161:0] ternary_sha3(input [161:0] input_trits);
+        reg [161:0] output_trits;
+        // Placeholder: Simple permutation (matches DevTernary.c's software placeholder)
+        // TODO: Replace with ternary Keccak for real SHA3
+        for (int i = 0; i < TRIT_COUNT; i++) begin
+            output_trits[i*TRIT_WIDTH +: TRIT_WIDTH] = input_trits[((i + 1) % TRIT_COUNT)*TRIT_WIDTH +: TRIT_WIDTH];
+        end
+        return output_trits;
+    endfunction
+
     always @(posedge clk or posedge rst) begin
         if (rst) begin
             state <= IDLE;
             sp <= 0;
             ready <= 1;
             done <= 0;
-            error <= 0;
+            error <= ERROR_NONE;
             for (int i = 0; i < 16; i++) stack[i] <= 0;
         end else begin
             case (state)
@@ -80,7 +102,7 @@ module hanoivm_fsm (
                         operand_reg <= operand_in;
                         state <= FETCH;
                         ready <= 0;
-                        error <= 0;
+                        error <= ERROR_NONE;
                     end
                 end
 
@@ -101,7 +123,7 @@ module hanoivm_fsm (
                                 sp <= sp + 1;
                                 temp_result <= operand_reg;
                             end else begin
-                                error <= 1; // Stack overflow
+                                error <= ERROR_STACK_OVERFLOW;
                             end
                         end
                         8'h02: begin // POP
@@ -109,12 +131,12 @@ module hanoivm_fsm (
                                 sp <= sp - 1;
                                 temp_result <= stack[sp - 1];
                             end else begin
-                                error <= 1; // Stack underflow
+                                error <= ERROR_STACK_UNDERFLOW;
                             end
                         end
                         8'h03: begin // ADD
                             if (sp >= 2) begin
-                                reg [TRIT_WIDTH-1:0] carry = 0;
+                                reg [TRIT_WIDTH-1:0] carry = TRIT_ZERO;
                                 for (int i = 0; i < TRIT_COUNT; i++) begin
                                     temp_result[i*TRIT_WIDTH +: TRIT_WIDTH] <= ternary_add(
                                         stack[sp-1][i*TRIT_WIDTH +: TRIT_WIDTH],
@@ -125,7 +147,7 @@ module hanoivm_fsm (
                                 sp <= sp - 1;
                                 stack[sp-2] <= temp_result;
                             end else begin
-                                error <= 1; // Insufficient operands
+                                error <= ERROR_STACK_UNDERFLOW;
                             end
                         end
                         8'h04: begin // NOT
@@ -137,7 +159,7 @@ module hanoivm_fsm (
                                 end
                                 stack[sp-1] <= temp_result;
                             end else begin
-                                error <= 1; // Insufficient operands
+                                error <= ERROR_STACK_UNDERFLOW;
                             end
                         end
                         8'h05: begin // AND
@@ -151,11 +173,14 @@ module hanoivm_fsm (
                                 sp <= sp - 1;
                                 stack[sp-2] <= temp_result;
                             end else begin
-                                error <= 1; // Insufficient operands
+                                error <= ERROR_STACK_UNDERFLOW;
                             end
                         end
+                        8'h06: begin // SHA3 (placeholder, aligned with DevTernary.c)
+                            temp_result <= ternary_sha3(operand_reg);
+                        end
                         default: begin
-                            error <= 1; // Unknown opcode
+                            error <= ERROR_INVALID_OPCODE;
                             temp_result <= 0;
                         end
                     endcase
