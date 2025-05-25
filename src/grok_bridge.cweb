@@ -1,0 +1,54 @@
+
+#### 2. `grok_bridge.cweb` Stub
+```cweb
+@* Grok API Bridge for HanoiVM.
+This module implements a ZeroMQ-based bridge to connect Grok 3's NLP queries to
+AxionCLI for ternary execution. It receives JSON queries, forwards them to the
+TISC Query Compiler, and returns results.
+
+@s zmq_t int
+@s json_t int
+
+@*1 Dependencies.
+@c
+#include <zmq.h>
+#include <json-c/json.h>
+#include "axioncli.h"
+
+@*1 Bridge Server.
+Listens on a ZeroMQ socket for Grok queries and dispatches to AxionCLI.
+@c
+void *grok_bridge_init(const char *endpoint) {
+  void *context = zmq_ctx_new();
+  void *socket = zmq_socket(context, ZMQ_REP);
+  zmq_bind(socket, endpoint); // e.g., "tcp://*:5555"
+  return socket;
+}
+
+@*1 Process Query.
+Parses JSON query, sends to AxionCLI, and returns ternary execution result.
+@c
+json_t *grok_bridge_process(void *socket) {
+  zmq_msg_t msg;
+  zmq_msg_init(&msg);
+  zmq_msg_recv(&msg, socket, 0);
+  json_t *query = json_parse(zmq_msg_data(&msg));
+  json_t *result = axioncli_execute_tisc(query); // Calls TISC compiler
+  zmq_msg_close(&msg);
+  return result;
+}
+
+@*1 Main Loop.
+@c
+int main() {
+  void *socket = grok_bridge_init("tcp://*:5555");
+  while (1) {
+    json_t *result = grok_bridge_process(socket);
+    char *response = json_dumps(result, JSON_COMPACT);
+    zmq_send(socket, response, strlen(response), 0);
+    free(response);
+    json_decref(result);
+  }
+  zmq_close(socket);
+  return 0;
+}
