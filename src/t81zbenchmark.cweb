@@ -1,0 +1,29 @@
+@* T81Z Compression Benchmark.
+This module benchmarks T81Z ternary compression against zlib, LZ4, and Brotli
+on AI datasets (text, JSON, neural weights).
+
+@s t81z_compress int
+@s benchmark_result struct
+
+@*1 Benchmark Setup.
+@c
+#include "t81z.h"
+#include <zlib.h>
+#include <lz4.h>
+#include <brotli/enc.h>
+
+struct benchmark_result {
+  double ratio; // Compression ratio
+  double time_ms; // Compression time
+};
+
+@*1 Run Benchmark.
+Compares T81Z vs. others on a dataset.
+@c
+struct benchmark_result t81z_benchmark(const char *input_file) {
+  // Load dataset
+  // Run T81Z: t81z_compress()
+  // Run zlib, LZ4, Brotli
+  // Measure ratio, time
+  // Return results
+}
