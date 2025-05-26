@@ -504,10 +504,9 @@ static long axion_ioctl(struct file *file, unsigned int cmd, unsigned long arg) 
    }
    ret = axion_stack_push(unit);
    if (!ret)
-     log_entropy("IOCTL_PUSH", unit);
+     log_entropy("IOCTL", unit);
    break;
  case AXION_IOC_POP:
-     {
    ret = axion_stack_pop(&unit);
    if (!ret) {
      if (copy_to_user((void __user *)arg, &unit, sizeof(t81_unit_t))) {
@@ -517,9 +516,8 @@ static long axion_ioctl(struct file *file, unsigned int cmd, unsigned long arg) 
      }
    }
    break;
-   }
  case AXION_IOC_EXEC:
-   if (arg >= ARRAY_SIZE(operations) - 1) { // Exclude NULL terminator
+   if (arg >= ARRAY_SIZE(operations)) - 1) { // Exclude NULL terminator
      ret = -EINVAL;
      break;
    }
@@ -542,7 +540,7 @@ static long axion_ioctl(struct file *file, unsigned int cmd, unsigned long arg) 
      for (int i = 0; i < TRIT_COUNT; i++) {
        t81_unit_t unit = {
          .value = (((input >> (i * 2)) & 0x3) == 2) ? -1 : ((input >> (i * 2)) & 0x3),
-         .entropy = get_random_u8() // Dynamic entropy
+         .entropy = get_random_u8)() // Dynamic entropy
        };
        axion_stack_push(unit);
        log_entropy("IOCTL_SET_INPUT_STACK", unit);
@@ -552,7 +550,7 @@ static long axion_ioctl(struct file *file, unsigned int cmd, unsigned long arg) 
    mutex_unlock(&mmio_lock);
    return 0; // Avoid mutex_unlock(&stack_lock) below
  case AXION_IOC_QUEUE_COPROCESSOR:
-   if (copy_from_user(&instr, (t81_coprocessor_instr_t __user *)arg, sizeof(t81_coprocessor_instr_t))) {
+   if (copy_from_user(&instr, (t81_coprocessor_instr_t __user *)arg, sizeof(t81_coprocessor)))) {
      ret = -EFAULT;
      break;
    }
@@ -564,7 +562,7 @@ static long axion_ioctl(struct file *file, unsigned int cmd, unsigned long arg) 
    ret = axion_stack_push_coprocessor_instr(instr);
    if (!ret) {
      const char *op_names[] = {"TADD", "TMUL", "TNEG"};
-     log_entropy(op_names[instr.opcode], (t81_unit_t){0, 1});
+     log_entropy(op_names[instr.opcode], (t81_unit_t){0, 0});
    }
    break;
  default:
@@ -574,115 +572,102 @@ static long axion_ioctl(struct file *file, unsigned int cmd, unsigned long arg) 
  return ret;
 }
 
-@d FileOps and Module Lifecycle
-@<1File Operations & Module Lifecycle@>=
+@d File Operations & Module Lifecycle
+@<File Operations & Module Lifecycle@>=
 static const struct file_operations axion_debug_fops = {
- .owner = THIS_MODULE,
- .read = axion_debugfs_read,
- .write = axion_debugfs_write,
+    .owner = THIS_MODULE,
+    .read = axion_debugfs_read,
+    .write = axion_debugfs_write,
 };
 
 static const struct file_operations axion_entropy_fops = {
- .owner = THIS_MODULE,
- .read = axion_entropy_read,
+    .owner = THIS_MODULE,
+    .read = axion_entropy_read,
 };
 
 static const struct file_operations axion_viz_fops = {
- .owner = THIS_MODULE,
- .read = axion_viz_read,
+    .owner = THIS_MODULE,
+    .read = axion_viz_read,
 };
 
 static const struct file_operations axion_dev_fops = {
- .owner = THIS_MODULE,
- .unlocked_ioctl = axion_ioctl,
+    .owner = THIS_MODULE,
+    .unlocked = axion_ioctl,
 };
 
 static int __init axion_init(void) {
- int ret;
+    int ret = 0;
 
- pr_info("%s: Initializing runtime\n", AXION_NAME);
- mmio_base = ioremap(mmio_base_addr, MMIO_SIZE);
- if (!mmio_base)
-   pr_warn("%s: MMIO mapping failed, fallback to software only\n", AXION_NAME);
+    pr_info("%s: Initializing runtime\n", AXION_NAME);
+    mmio_base = ioremap(mmio_base_addr, MMIO_SIZE);
+    if (!mmio_base) {
+        pr_err("%s: MMIO mapping failed, falling back to software\n", AXION_NAME);
+    }
 
- axion_debug_dir = debugfs_create_dir(AXION_NAME, NULL);
- if (!axion_debug_dir) {
-   ret = -ENOMEM;
-   goto err_mmio;
- }
+    axion_debug_dir = debugfs_create_dir(AXION_NAME, NULL);
+    if (!axion_debug_dir) {
+        ret = -ENOMEM;
+        goto err_mmio;
+    }
 
- debugfs_create_file("stack", 0600, axion_debug_dir, NULL, &axion_debug_fops);
- debugfs_create_file("entropy_log", 0400, axion_debug_dir, NULL, &axion_entropy_fops);
- debugfs_create_file("visualization", 0400, axion_debug_dir, NULL, &axion_viz_fops);
+    debugfs_create_file("stack", 0600, axion_debug_dir, NULL, &axion_debug_fops);
+    entropy_log_file = debugfs_create_file("entropy_log", 0400, axion_debug_dir, NULL, &axion_entropy_fops);
+    viz_file = debugfs_create_file("visualization", 0400, axion_debug_dir, NULL, &axion_viz_fops);
 
- ret = alloc_chrdev_region(&axion_dev, 0, 1, AXION_NAME);
- if (ret) goto err_debugfs;
+    ret = alloc_chrdev_region(&axion_dev, 0, 1, 1, AXION_NAME);
+    if (ret) {
+        goto err_debugfs;
+    }
 
- axion_class = class_create(THIS_MODULE, AXION_NAME);
- if (IS_ERR(axion_class)) {
-   ret = PTR_ERR(axion_class);
-   goto err_chrdev;
- }
+    axion_class = class_create(THIS_MODULE, AXION_NAME);
+    if (IS_ERR(axion_class)) {
+        ret = PTR_ERR(axion_class);
+        goto err_chrdev;
+    }
 
- cdev_init(&axion_cdev, &axion_dev_fops);
- ret = cdev_add(&axion_cdev, axion_dev, 1);
- if (ret) goto err_class;
+    cdev_init(&axion_cdev, &axion_dev_fops);
+    ret = cdev_add(&axion_cdev, axion_dev, 1);
+    if (ret) {
+        goto err_class;
+    }
 
- if (!device_create(axion_class, NULL, axion_dev, NULL, AXION_NAME)) {
-   ret = -ENOMEM;
-   goto err_device;
- }
+    device_create(axion_class, NULL, axion_dev, NULL, AXION_NAME);
 
- mutex_lock(&stack_lock);
- axion_stack.pointer = 0;
- take_snapshot();
- memset(&session, 0, sizeof(session));
- transaction_log.op_count = 0;
- mutex_unlock(&stack_lock);
- entropy_log_len = 0;
- return 0;
+    mutex_lock(&stack_lock);
+    axion_stack.pointer = 0;
+    take_snapshot();
+    memset(&session, 0, sizeof(axion_session_t));
+    transaction_log.op_count = 0;
+    mutex_unlock(&stack_lock);
+    entropy_log_len = 0;
+    return 0;
 
-err_device:
- cdev_del(&axion_cdev);
 err_class:
- class_destroy(axion_class);
+    class_destroy(axion_class);
 err_chrdev:
- unregister_chrdev_region(axion_dev, 1);
+    unregister_chrdev_region(axion_dev, 1);
 err_debugfs:
- debugfs_remove_recursive(axion_debug_dir);
+    debugfs_remove_recursive(axion_debug_dir);
 err_mmio:
- if (mmio_base) iounmap(mmio_base);
- return ret;
+    if (mmio_base) iounmap(mmio_base);
+    return ret;
 }
 
 static void __exit axion_exit(void) {
- device_destroy(axion_class, axion_dev);
- cdev_del(&axion_cdev);
- class_destroy(axion_class);
- unregister_chrdev_region(axion_dev, 1);
- debugfs_remove_recursive(axion_debug_dir);
- if (mmio_base) iounmap(mmio_base);
- for (int i = 0; i < session.cmd_count; i++)
-   kfree(session.commands[i]);
- pr_info("%s: Exiting\n", AXION_NAME);
-}
-
-@sstatic void __exit axion(void) {
-    device_destroy(axion_class_destroy, axion_dev);
+    device_destroy(axion_class, axion_dev);
     cdev_del(&axion_cdev);
-    class_destroy(&axion_class_destroy);
-    unregister_destroy_region(&axion_dev, axion_dev);
-    debugfs_destroy_recursive(&axion_debug);
-    if (mmio) iounmap(mmio);
-    for (int i = 0; i < session_cmd_count; i++)
-        kfree(session_commands[i]);
+    class_destroy(axion_class);
+    unregister_chrdev_region(axion_dev, 1);
+    debugfs_remove_recursive(axion_debug_dir);
+    if (mmio_base) iounmap(mmio_base);
+    for (int i = 0; i < session.cmd_count; i++)
+        kfree(session.commands[i]);
     pr_info("%s: Exited\n", AXION_NAME);
-    return;
 }
 
 module_init(axion_init);
 module_exit(axion_exit);
-MODULE_LICENSE("%s", "MIT");
-MODULE_AUTHOR("%s", "Axion AI Team");
-MODULE_DESCRIPTION("%s", "Axion AI Kernel Module with NLP and Ternary Execution");
-MODULE_VERSION("%s", "0.1");
+MODULE_LICENSE("MIT");
+MODULE_AUTHOR("Axion AI Team");
+MODULE_DESCRIPTION("Axion AI Kernel Module with NLP and Ternary Execution");
+MODULE_VERSION("0.3");
