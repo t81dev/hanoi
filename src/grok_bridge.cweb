@@ -1,6 +1,3 @@
-
-#### 2. `grok_bridge.cweb` Stub
-```cweb
 @* Grok API Bridge for HanoiVM.
 This module implements a ZeroMQ-based bridge to connect Grok 3's NLP queries to
 AxionCLI for ternary execution. It receives JSON queries, forwards them to the
@@ -13,6 +10,8 @@ TISC Query Compiler, and returns results.
 @c
 #include <zmq.h>
 #include <json-c/json.h>
+#include <stdlib.h>
+#include <string.h>
 #include "axioncli.h"
 
 @*1 Bridge Server.
@@ -21,34 +20,56 @@ Listens on a ZeroMQ socket for Grok queries and dispatches to AxionCLI.
 void *grok_bridge_init(const char *endpoint) {
   void *context = zmq_ctx_new();
   void *socket = zmq_socket(context, ZMQ_REP);
-  zmq_bind(socket, endpoint); // e.g., "tcp://*:5555"
+  if (zmq_bind(socket, endpoint) != 0) {
+    perror("[grok_bridge] zmq_bind failed");
+    return NULL;
+  }
   return socket;
 }
 
 @*1 Process Query.
 Parses JSON query, sends to AxionCLI, and returns ternary execution result.
 @c
-json_t *grok_bridge_process(void *socket) {
+json_object *grok_bridge_process(void *socket) {
   zmq_msg_t msg;
   zmq_msg_init(&msg);
-  zmq_msg_recv(&msg, socket, 0);
-  json_t *query = json_parse(zmq_msg_data(&msg));
-  json_t *result = axioncli_execute_tisc(query); // Calls TISC compiler
+  if (zmq_msg_recv(&msg, socket, 0) == -1) {
+    perror("[grok_bridge] zmq_msg_recv failed");
+    zmq_msg_close(&msg);
+    return NULL;
+  }
+  const char *msg_data = (const char *)zmq_msg_data(&msg);
+  json_object *query = json_tokener_parse(msg_data);
   zmq_msg_close(&msg);
+
+  if (!query) {
+    fprintf(stderr, "[grok_bridge] Failed to parse JSON input\n");
+    return NULL;
+  }
+
+  json_object *result = axioncli_execute_tisc(query);
+  json_object_put(query); // Free query object
+
   return result;
 }
 
 @*1 Main Loop.
 @c
 int main() {
-  void *socket = grok_bridge_init("tcp://*:5555");
+  const char *endpoint = "tcp://*:5555";
+  void *socket = grok_bridge_init(endpoint);
+  if (!socket) return EXIT_FAILURE;
+
+  printf("[grok_bridge] Listening on %s\n", endpoint);
   while (1) {
-    json_t *result = grok_bridge_process(socket);
-    char *response = json_dumps(result, JSON_COMPACT);
+    json_object *result = grok_bridge_process(socket);
+    if (!result) continue;
+
+    const char *response = json_object_to_json_string(result);
     zmq_send(socket, response, strlen(response), 0);
-    free(response);
-    json_decref(result);
+    json_object_put(result);
   }
+
   zmq_close(socket);
-  return 0;
+  return EXIT_SUCCESS;
 }
