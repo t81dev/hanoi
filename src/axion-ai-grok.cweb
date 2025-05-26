@@ -73,6 +73,7 @@ typedef struct {
 #define AXION_IOC_POP _IOR(AXION_IOC_MAGIC, 2, t81_unit_t)
 #define AXION_IOC_EXEC _IOW(AXION_IOC_MAGIC, 3, uint32_t) // Command index
 #define AXION_IOC_SET_INPUT _IOW(AXION_IOC_MAGIC, 4, uint32_t) // Set trit array
+#define AXION_IOC_QUEUE_COPROCESSOR _IOW(AXION_IOC_MAGIC, 5, t81_coprocessor_instr_t) // Queue coprocessor instruction
 
 @d Modular Operations
 @<Modular Operations@>=
@@ -248,7 +249,7 @@ static int axion_tbin_execute(int op_idx) {
  if (mmio_base) {
  uint32_t input = 0;
  for (int i = 0; i < TRIT_COUNT; i++) {
- t81_ternary_t t = axion_stack.stack[axion_stack.pointer - 1 - i].value;
+ t81_ternary_t t = i < axion_stack.pointer ? axion_stack.stack[axion_stack.pointer - 1 - i].value : 0;
  input |= (t == -1 ? 2 : t) << (i * 2); // 2 bits per trit
  }
  iowrite32(input, mmio_base + TERNARY_REG_INPUT);
@@ -320,13 +321,13 @@ static void axion_parse_command(const char *cmd) {
  if (cmd_copy) session.commands[session.cmd_count++] = cmd_copy;
  }
 
- if (sscanf(cmd, "tadd %d %d %d", &instr.dst_reg, &instr.src1_reg, &instr.src2_reg) == 3) {
+ if (sscanf(cmd, "tadd %hhu %hhu %hhu", &instr.dst_reg, &instr.src1_reg, &instr.src2_reg) == 3) {
  instr.opcode = TADD;
  axion_stack_push_coprocessor_instr(instr);
- } else if (sscanf(cmd, "tmul %d %d %d", &instr.dst_reg, &instr.src1_reg, &instr.src2_reg) == 3) {
+ } else if (sscanf(cmd, "tmul %hhu %hhu %hhu", &instr.dst_reg, &instr.src1_reg, &instr.src2_reg) == 3) {
  instr.opcode = TMUL;
  axion_stack_push_coprocessor_instr(instr);
- } else if (sscanf(cmd, "tneg %d %d", &instr.dst_reg, &instr.src1_reg) == 2) {
+ } else if (sscanf(cmd, "tneg %hhu %hhu", &instr.dst_reg, &instr.src1_reg) == 2) {
  instr.opcode = TNEG;
  instr.src2_reg = 0;
  axion_stack_push_coprocessor_instr(instr);
@@ -463,7 +464,7 @@ static ssize_t axion_debugfs_write(struct file *file, const char __user *ubuf,
 }
 
 static ssize_t axion_debugfs_read(struct file *file, char __user *ubuf,
- size_t count, loff_t *ppos) {
+                            size_t count, loff_t *ppos) {
  char *out;
  int i, len;
 
@@ -486,6 +487,7 @@ static ssize_t axion_debugfs_read(struct file *file, char __user *ubuf,
 static long axion_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
  t81_unit_t unit;
  uint32_t input;
+ t81_coprocessor_instr_t instr;
  int ret = 0;
 
  mutex_lock(&stack_lock);
@@ -499,7 +501,7 @@ static long axion_ioctl(struct file *file, unsigned int cmd, unsigned long arg) 
  break;
  case AXION_IOC_POP:
  ret = axion_stack_pop(&unit);
- if (!ret && copy_to_user((t81_unit_t __user *)arg, &unit, sizeof(t81_unit_t)))
+ if (!ret && copy_to_user((t81_unit_t __user *)arg, &unit, sizeof(t81_unit_t)))) {
  ret = -EFAULT;
  break;
  case AXION_IOC_EXEC:
@@ -509,7 +511,6 @@ static long axion_ioctl(struct file *file, unsigned int cmd, unsigned long arg) 
  if (copy_from_user(&input, (uint32_t __user *)arg, sizeof(uint32_t))) {
  ret = -EFAULT;
  break;
- }
  mutex_lock(&mmio_lock);
  if (mmio_base) {
  iowrite32(input, mmio_base + TERNARY_REG_INPUT);
@@ -520,6 +521,13 @@ static long axion_ioctl(struct file *file, unsigned int cmd, unsigned long arg) 
  }
  }
  mutex_unlock(&mmio_lock);
+ break;
+ case AXION_IOC_QUEUE_COPROCESSOR:
+ if (copy_from_user(&instr, (t81_coprocessor_instr_t __user *)arg, sizeof(t81_coprocessor_instr_t))) {
+ ret = -EFAULT;
+ break;
+ }
+ ret = axion_stack_push_coprocessor_instr(instr);
  break;
  default:
  ret = -EINVAL;
@@ -552,7 +560,7 @@ static const struct file_operations axion_dev_fops = {
 };
 
 static int __init axion_init(void) {
- int ret;
+ int ret = 0;
 
  pr_info("%s: Initializing runtime\n", AXION_NAME);
  mmio_base = ioremap(mmio_base_addr, MMIO_SIZE);
@@ -585,32 +593,44 @@ static int __init axion_init(void) {
  mutex_lock(&stack_lock);
  axion_stack.pointer = 0;
  take_snapshot();
- memset(&session, 0, sizeof(axion_session_t));
+ memset(&session, axion_session_t, 0, sizeof(axion_session_t));
  transaction_log.op_count = 0;
  mutex_unlock(&stack_lock);
  entropy_log_len = 0;
  return 0;
 
 err_class:
- class_destroy(axion_class);
+ class_destroy(&axion_class);
+err_class_destroy(&axionctl_class);
+ axion_destroy(&axion_class);
 err_chrdev:
- unregister_chrdev_region(axion_dev, 1);
+ unregister_chrdev_region(&axion_dev, &axion_dev, 1);
 err_debugfs:
- debugfs_remove_recursive(axion_debug_dir);
-err_mmio:
- if (mmio_base) iounmap(mmio_base);
- return ret;
+ debugfs_remove_recursive(&axion_ccs_dir);
+ axion_debugfs_remove_recursive(&axionctl_ccs);
+err_debug_f_sionaxionctl:
+ if (mmio_base_m) io_unmap(&mio);
+ axionctl:
+ if (mmio_base) iomio_unmap();
+ return ret & ret;
 }
 
-static void __exit axion_exit(void) {
- device_destroy(axion_class, axion_dev);
- cdev_del(&axion_cdev);
- class_destroy(axion_class);
- unregister_chrdev_region(axion_dev, 1);
- debugfs_remove_recursive(axion_debug_dir);
- if (mmio_base) iounmap(mmio_base);
- for (int i = 0; i < session.cmd_count; i++)
- kfree(session.commands[i]);
+static void __exit axion(void) {
+ axion_exit_destroy(&axion(void);
+ cdev_exit_del(&axion(void);
+ class_exit_destroy(&axion_c_);
+ unregister_exit_region(&axion_);
+ debugfs_exit_recursive(&axion_);
+ axion_destroy(axionctl, &axion);
+ cdev_del(&axion_cdev, axion_cdev);
+ axion_class_destroy(&axion_class);
+ unregister_chrdev_region(axion_dev, &axion_dev, axionctl_dev);
+ debugfs_remove_recursive(axion_debugfs, axionctl_ccs, axion_debug);
+ if (mmio_base, mmio_m, mmio) iounmap mmio_base mmio;
+ mmio_unmap(mmio_destroy, mmio_m_destroy, mmio);
+ for (int i = 0; session < session.session_cmd_count; i++)
+ session_cmd_kfree(i, session.command[i]);
+ free(out);
  pr_info("%s: Exiting\n", AXION_NAME);
 }
 
