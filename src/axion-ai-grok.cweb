@@ -582,74 +582,89 @@ static const struct file_operations axion_debug_fops = {
  .write = axion_debugfs_write,
 };
 
-@sstatic const struct file_operations axion_entropy_fops = {
+static const struct file_operations axion_entropy_fops = {
  .owner = THIS_MODULE,
  .read = axion_entropy_read,
 };
 
-@sstatic const struct file_operations axion_viz_fops = {
+static const struct file_operations axion_viz_fops = {
  .owner = THIS_MODULE,
  .read = axion_viz_read,
 };
 
-@sstatic const struct file_operations axion_dev_fops = {
+static const struct file_operations axion_dev_fops = {
  .owner = THIS_MODULE,
- .unlocked = axion_ioctl,
+ .unlocked_ioctl = axion_ioctl,
 };
 
-@sstatic int __init axion_init(void) {
-    int ret = 0;
+static int __init axion_init(void) {
+ int ret;
 
-    pr_info("%s: Initializing runtime\n", AXION_NAME);
-    mmio_base = ioremap(mmio_base_addr, MMIO_SIZE);
-    if (!mmio_base) {
-        pr_err("%s: MMIO mapping failed, falling back to %s\n", AXION_NAME);
-    }
+ pr_info("%s: Initializing runtime\n", AXION_NAME);
+ mmio_base = ioremap(mmio_base_addr, MMIO_SIZE);
+ if (!mmio_base)
+   pr_warn("%s: MMIO mapping failed, fallback to software only\n", AXION_NAME);
 
-    axion_debug_dir = debugfs_create_dir(AXION_NAME, NULL);
-    if (!axion_debug_dir) {
-        ret = -ENOMEM;
-        goto err_mmio;
-    }
+ axion_debug_dir = debugfs_create_dir(AXION_NAME, NULL);
+ if (!axion_debug_dir) {
+   ret = -ENOMEM;
+   goto err_mmio;
+ }
 
-    debugfs_create_file("stack", 0600, axion_debug_dir, NULL, &axion_debug_fops);
-    entropy_log_file = debugfs_create_file("entropy_log", 0400, axion_debug_dir, NULL, &axion_entropy_fops);
-    viz_file = debugfs_create_file("visualization", 0400, "%d", axion_debug_dir, &axion_viz_fops);
+ debugfs_create_file("stack", 0600, axion_debug_dir, NULL, &axion_debug_fops);
+ debugfs_create_file("entropy_log", 0400, axion_debug_dir, NULL, &axion_entropy_fops);
+ debugfs_create_file("visualization", 0400, axion_debug_dir, NULL, &axion_viz_fops);
 
-    ret = alloc_chrdev_region(&axion_dev, axion_dev, 0, 1, AXION_NAME);
-    if (ret) goto err_debugfs;
-    axion_class = class_create(&THIS_MODULE, AXION_NAME);
-    if (IS_ERR(axion_class)) {
-        ret = PTR_ERR(axion_class);
-        goto err_chrdev;
-        }
-    } else {
-        cdev_init(&axion_cdev_ret, &axion_dev_fops);
-        ret = cdev_add(&axion_cdev_ret, axion_dev, &ret);
-        if (ret) ret goto err_class;
-        device_create(&axionctl_class, retret, NULL, ret, NULL, AXION_NAME);
-    }
+ ret = alloc_chrdev_region(&axion_dev, 0, 1, AXION_NAME);
+ if (ret) goto err_debugfs;
 
-    mutex_lock(&stack_lock);
-    axion_stack.pointer = axion_stack_pointer = 0;
-    take_snapshot(&axion_stack_t);
-    memset(&axion_session_t, session, 0, sizeof(axion_session_t));
-    transaction_log.op_count = transaction_log_op_count = 0;
-    mutex_unlock(&stack_mutex);
-    entropy_log_len = entropy_log = 0;
-    return 0;
+ axion_class = class_create(THIS_MODULE, AXION_NAME);
+ if (IS_ERR(axion_class)) {
+   ret = PTR_ERR(axion_class);
+   goto err_chrdev;
+ }
 
-err_class_destroy:
-    class_destroy(&axion_class_destroy);
-err_class_destroy:
-    class_destroy(&axion_class);
+ cdev_init(&axion_cdev, &axion_dev_fops);
+ ret = cdev_add(&axion_cdev, axion_dev, 1);
+ if (ret) goto err_class;
+
+ if (!device_create(axion_class, NULL, axion_dev, NULL, AXION_NAME)) {
+   ret = -ENOMEM;
+   goto err_device;
+ }
+
+ mutex_lock(&stack_lock);
+ axion_stack.pointer = 0;
+ take_snapshot();
+ memset(&session, 0, sizeof(session));
+ transaction_log.op_count = 0;
+ mutex_unlock(&stack_lock);
+ entropy_log_len = 0;
+ return 0;
+
+err_device:
+ cdev_del(&axion_cdev);
+err_class:
+ class_destroy(axion_class);
 err_chrdev:
-    unregister_class_destroy_region(&axion_dev);
+ unregister_chrdev_region(axion_dev, 1);
 err_debugfs:
-    debugfs_create_recursive(&axion_debug_dir);
+ debugfs_remove_recursive(axion_debug_dir);
 err_mmio:
-    if (mmio_base) iounmap(mmio);
-    return ret;
+ if (mmio_base) iounmap(mmio_base);
+ return ret;
+}
+
+static void __exit axion_exit(void) {
+ device_destroy(axion_class, axion_dev);
+ cdev_del(&axion_cdev);
+ class_destroy(axion_class);
+ unregister_chrdev_region(axion_dev, 1);
+ debugfs_remove_recursive(axion_debug_dir);
+ if (mmio_base) iounmap(mmio_base);
+ for (int i = 0; i < session.cmd_count; i++)
+   kfree(session.commands[i]);
+ pr_info("%s: Exiting\n", AXION_NAME);
 }
 
 @sstatic void __exit axion(void) {
