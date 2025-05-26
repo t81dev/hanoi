@@ -1,4 +1,83 @@
-# 📜 CHANGELOG.md
+## \[v0.9.3] - 2025-05-26
+
+### ✨ Added
+
+* **🔢 Comprehensive Data Type Integration (`T81DataTypes`)**
+
+  * Fully operationalized all core and advanced T81 data types:
+
+    * `T81BigInt`, `T81Float`, `T81Fraction` — now supported in interpreter core and AI routines.
+    * `T81Matrix`, `T81Tensor`, `T81Vector` — used in ternary neural net ops, symbolic AI, and GPU dispatch.
+    * `T81Graph`, `T81Polynomial`, `T81Quaternion` — mapped to combinatorial logic, AST traversal, and simulation ops.
+
+  * Introduced `t81z_import.cweb` and `t81z_memory_loader.cweb` for `.t81z` memory capsule parsing and dynamic loading of T81-typed objects.
+
+  * Example use cases demonstrated in:
+
+    * `tisc_query_compiler.cweb` (e.g., symbolic AST ↔ T81Opcode)
+    * `axion-ai.cweb` (e.g., entropy-aware AI vector/tensor selection)
+    * `ternary_coprocessor.cweb` (e.g., optimized T81Float arithmetic)
+
+* **📊 Symbolic Reasoning Trie Enhancement**
+
+  * Integrated T81Graph-based entropy-aware decision tree structure into `nlp_decision_tree.cweb`
+  * Trie nodes now support polymorphic `T81Data` structures (int, float, tensor), enabling deeper semantic parsing.
+
+* **📁 NLP → TISC → Stack Pipeline Demos**
+
+  * Added `README_demo.md` and sample trace files showcasing use of `T81Tensor`, `T81Opcode`, and symbolic logic in AI ethical simulations.
+  * New Axion CLI commands for stack inspection with entropy (`axionctl --stack-json`).
+
+* **🧠 TISC Runtime Type Promotion**
+
+  * `interpret_opcode()` now supports runtime type promotion across T81 types based on opcode intent and Axion feedback.
+
+---
+
+### 🛠️ Changed
+
+* **💡 T81Lang Runtime Enhancements**
+
+  * Rewrote T81Lang standard library entries for math, crypto, and tensor logic to use typed T81 operations (`t81float_add`, `t81tensor_contract`, etc.)
+
+* **📦 `.t81z` Format Update**
+
+  * New schema supports embedded type metadata and CRC32-verified section parsing.
+  * Backward-compatible with previous `.t81z` snapshots.
+
+* **🧩 Opcode Layer Improvements**
+
+  * Extended `T81Opcode` structure with optional symbolic annotations and dynamic type inference.
+
+* **🧠 Axion AI Optimization Pipeline**
+
+  * Axion now consults symbolic entropy scores for determining operand type selection (e.g., switch to `T81Fraction` for precision-sensitive paths).
+
+---
+
+### 🚗 Fixed
+
+* **🔍 Type Mismatch Validation**
+
+  * Corrected type resolution bug in `t81lang_compiler` when passing mixed-type operands to polymorphic ops.
+
+* **🌀 Tensor Contract Stability**
+
+  * Fixed memory leak and improper shape resolution in `t81tensor_contract()` with unbalanced dimensions.
+
+* **⚖️ Floating-Point Roundoff**
+
+  * Added precision normalization fallback for `T81Float` under extreme exponent scaling.
+
+---
+
+## 🔮 Notes & Reflections
+
+This release fully integrates the T81 data model into symbolic execution, neural AI paths, and NLP → TISC pipelines. These types now serve not just as containers—but as **logical operands** across all layers of HanoiVM.
+
+---
+
+> *"Data types are no longer just types—they are logic carriers."* — `t81data_bridge.cweb`
 
 ## \[v0.9.2] - 2025-05-18
 
