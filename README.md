@@ -1,3 +1,4 @@
+
 # 🚀 Hanoi — Recursive Ternary Virtual Machine
 
 **Hanoi** is a recursive, AI-augmented **ternary virtual machine** built on a symbolic base-81 architecture. It is the execution core of the **Axion + T81Lang** ecosystem, enabling stack-tier promotion, symbolic AI opcodes, and entropy-aware transformations across three levels of logic:
@@ -89,11 +90,6 @@ src/
 ├── TISCQueryCompiler.cweb        # Semantic query-to-TISC compiler
 ├── nist_encryption.cweb          # AES/RSA/SHA support for secure data flows
 
-
-
-
-
-
 tests/
 ├── hanoivm-test.cweb             # Kernel-mode debugfs test harness
 ├── test_advanced_hvm.cweb        # Test AI macros, recursion, control flow
@@ -173,22 +169,22 @@ bazel run //:recursive_tier_execution -- --max-depth=36
 
 ## 📈 Project Status
 
-✅ Recursive execution engine
-✅ Literate `.cweb` modular design
-✅ Full symbolic tier stack (T81 → T243 → T729)
-✅ Pattern dispatch and entropy signal handling
-✅ Axion AI integration with rollback and NLP
-✅ GPU offload (HIP + CUDA) for symbolic macros
-✅ Verbose `.hvm` disassembler and type introspection
-✅ Kernel-level testing (`debugfs`)
-✅ `.t81viz` recursion trace export
-✅ `.synergy.cweb` for unified tier integration
-✅ AES-encrypted symbolic trace exports (`nist_encryption.cweb`)
-✅ 3D visualizer: `FrameSceneBuilder.cweb` + `PulseControl`
+✅ Recursive execution engine  
+✅ Literate `.cweb` modular design  
+✅ Full symbolic tier stack (T81 → T243 → T729)  
+✅ Pattern dispatch and entropy signal handling  
+✅ Axion AI integration with rollback and NLP  
+✅ GPU offload (HIP + CUDA) for symbolic macros  
+✅ Verbose `.hvm` disassembler and type introspection  
+✅ Kernel-level testing (`debugfs`)  
+✅ `.t81viz` recursion trace export  
+✅ `.synergy.cweb` for unified tier integration  
+✅ AES-encrypted symbolic trace exports (`nist_encryption.cweb`)  
+✅ 3D visualizer: `FrameSceneBuilder.cweb` + `PulseControl`  
 
-🔜 TISC query compiler with entropy scoring
-🔜 Live REPL for `.t81` to `.hvm`
-🔜 LLVM IR export for hybrid backend
+🔜 TISC query compiler with entropy scoring  
+🔜 Live REPL for `.t81` to `.hvm`  
+🔜 LLVM IR export for hybrid backend  
 🔜 Axion log streaming in Looking Glass
 
 ---
