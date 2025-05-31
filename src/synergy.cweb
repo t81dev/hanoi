@@ -1,5 +1,6 @@
 @* synergy.cweb | Cross-Module Synergy Engine for HanoiVM 0.9.2
 This module unifies HanoiVM symbolic systems (T81, T243, T729) with NLP-facing tools, recursive trace exports, AI-driven analysis, and Grok/ChatGPT-friendly interfaces. It supports chained symbolic queries, prompt generation, and explainable logic output, integrating T81Lang, Axion AI, T243/T729 symbolic logic, GPU dispatch, and secure trace capture. The module provides global initialization hooks, runtime synchronization, encryption-aware symbolic export, and enhanced AI-driven analysis with NLP capabilities for seamless interaction with modern AI systems like Grok.
+
 Enhancements (0.9.2):
 🔁 synergy_chain_query — NLP continuation logic for chained symbolic queries.
 📦 synergy_trace_session — Exports .t81z trace snapshots with compression and encryption.
