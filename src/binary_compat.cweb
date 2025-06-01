@@ -1,0 +1,95 @@
+@* Binary Compatibility Layer for HanoiVM |binary_compat.cweb|.
+
+@*1 Globals and Debugging.
+@c
+static int debug_enabled = 0;
+static int entropy_enabled = 1;
+
+@*1 Safe Binary Mapping.
+@c
+int binary_to_ternary(uint8_t bit) {
+    return (bit > 1) ? 0 : bit;
+}
+
+uint8_t ternary_to_binary(int trit) {
+    return (trit > 0) ? 1 : 0;
+}
+
+@*1 Entropy Logging (Buffered Stub).
+@c
+void entropy_log_safe(const char *op, int a, int b, int result) {
+    if (!entropy_enabled) return;
+    // TODO: replace with buffered logger
+    printf("[ENTROPY] %s: %d %d => %d\n", op, a, b, result);
+}
+
+@*1 Emulated Binary Operations (Safe + Debuggable).
+@c
+void binary_add_bin() {
+    int b = pop81();
+    int a = pop81();
+    if ((a | b) & ~1) { push81(0); return; } // invalid if not binary
+    int result = (a + b) & 0x1;
+    push81(result);
+    entropy_log_safe("ADD", a, b, result);
+}
+
+void binary_and_bin() {
+    int b = pop81();
+    int a = pop81();
+    if ((a | b) & ~1) { push81(0); return; }
+    int result = a & b;
+    push81(result);
+    entropy_log_safe("AND", a, b, result);
+}
+
+void binary_or_bin() {
+    int b = pop81();
+    int a = pop81();
+    if ((a | b) & ~1) { push81(0); return; }
+    int result = a | b;
+    push81(result);
+    entropy_log_safe("OR", a, b, result);
+}
+
+void binary_not_bin() {
+    int a = pop81();
+    if (a < 0 || a > 1) { push81(0); return; }
+    int result = !a;
+    push81(result);
+    entropy_log_safe("NOT", a, -1, result);
+}
+
+@*1 Dispatch Table (Fast + Scalable).
+@c
+typedef void (*binop_t)();
+
+typedef struct {
+    const char *name;
+    binop_t func;
+} binop_entry;
+
+binop_entry binary_ops[] = {
+    {"ADD", binary_add_bin},
+    {"AND", binary_and_bin},
+    {"OR",  binary_or_bin},
+    {"NOT", binary_not_bin},
+    {NULL,  NULL}
+};
+
+void run_binary_op(const char *op_name) {
+    for (int i = 0; binary_ops[i].name; i++) {
+        if (strcmp(op_name, binary_ops[i].name) == 0) {
+            binary_ops[i].func();
+            return;
+        }
+    }
+    if (debug_enabled) fprintf(stderr, "[BIN] Unknown op: %s\n", op_name);
+}
+
+@*1 Public Entry Point.
+@c
+void binary_compat_dispatch(const char *op_name) {
+    if (debug_enabled) printf("[BIN] Dispatching: %s\n", op_name);
+    run_binary_op(op_name);
+}
