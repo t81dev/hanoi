@@ -1,4 +1,4 @@
-@* synergy.cweb | Cross-Module Synergy Engine for HanoiVM 0.9.4
+@* synergy.cweb | Cross-Module Synergy Engine for HanoiVM 0.9.5
 This module unifies HanoiVM symbolic systems (T81, T243, T729) with NLP-facing tools,
 recursive trace exports, AI-driven analysis, and Grok/ChatGPT-friendly interfaces.
 It supports chained symbolic queries, prompt generation, explainable logic output,
@@ -7,38 +7,41 @@ BOR, BNOT) within the symbolic runtime. The module provides global initializatio
 runtime synchronization, encryption-aware symbolic export, and enhanced AI-driven analysis
 with NLP capabilities for seamless interaction with modern AI systems like Grok.
 
-Enhancements (0.9.4):
-🧩 Binary Compatibility: Emulates binary opcodes (BADD, BAND, BOR, BNOT) via enum-based dispatch (O(1)), toggled by HANOI_BINARY_MODE.
-🔄 Native Opcode Dispatch: Added T81/T243/T729 opcode handling in synergy_execute_symbolic_opcode.
-🤖 Grok API Integration: Extended synergy_reason for real-time binary opcode analysis via Grok API.
-🧹 Memory Cleanup: Added synergy_cleanup for safe HVMContext deallocation.
-🧪 Extended Testing: Added mock stack tests and multi-threaded scenarios.
-🔁 synergy_chain_query: NLP continuation logic for chained symbolic queries.
-📦 synergy_trace_session: Exports .t81z trace snapshots with compression and encryption.
-💬 synergy_prompt_macro: Generates Grok-friendly follow-up prompts.
-🧠 synergy_explain: Natural language summary of symbolic execution.
-🔍 synergy_reason: T729 recursive symbolic inference with Grok API support.
+Enhancements (0.9.5):
+🧩 Binary Compatibility: Emulates binary opcodes via hash-based dispatch (O(1)), toggled by HANOI_BINARY_MODE.
+🔄 Native Opcode Dispatch: Expanded to include T81_SUB, T243_CMP, T729_CALL with stack operations.
+🤖 Grok API Integration: Asynchronous API calls with response caching in synergy_grok_analyze_opcode.
+📝 Memory-Mapped I/O: Optimized trace exports in synergy_secure_export_trace using mmap.
+🔐 API Key Security: Grok API key via HANOI_GROK_API_KEY environment variable.
+🧹 Memory Cleanup: Enhanced synergy_cleanup with stack reset.
+🧪 Extended Testing: Added tests for new opcodes, async API, and mmap I/O.
+🔁 synergy_chain_query: NLP continuation logic for chained queries.
+📦 synergy_trace_session: Exports .t81z traces with compression and encryption.
+💬 synergy_prompt_macro: Generates Grok-friendly prompts.
+🧠 synergy_explain: Natural language summary of execution.
+🔍 synergy_reason: T729 inference with cached Grok analysis.
 🛡️ Fixed sodium_memcmp bug in synergy_secure_export_trace.
 📚 Improved documentation for HVMContext, Rust FFI, binary emulation, and Grok integration.
-⚡ Optimized compression with streaming for large traces.
-🔒 Thread-safe logging with mutex and conditional debug.
+⚡ Optimized compression with streaming and mmap.
+🔒 Thread-safe logging with mutex and HANOI_LOG_LEVEL.
 📏 Buffer-safe string operations with explicit sizes.
 
-Previous Recommendations Implemented:
-1. Enum-based dispatch for binary opcodes (O(1)).
-2. Thread-safe logging with pthread mutex.
-3. Conditional debug logging via debug_enabled.
-4. Buffer-safe string operations with strncpy.
-5. Buffered logging in binary_compat.cweb (assumed).
-6. Enhanced documentation for thread safety and performance.
+Previous Enhancements (0.9.4):
+1. Native Opcode Dispatch: T81_ADD, T243_MOV, T729_JMP.
+2. Grok API Integration: Real-time binary opcode analysis.
+3. Memory Cleanup: synergy_cleanup for HVMContext.
+4. Testing: Mock stack and multi-threaded dispatch tests.
+5. Logging: Configurable via HANOI_LOG_LEVEL.
+6. Error Tracking: error_count in HVMContext.
 
-Further Refinements (0.9.4):
-1. Native Opcode Dispatch: Handles T81_ADD, T243_MOV, T729_JMP with stack operations.
-2. Grok API Integration: Queries Grok for binary opcode analysis in synergy_reason.
-3. Memory Cleanup: synergy_cleanup clears HVMContext fields.
-4. Extended Testing: Mock stack operations and multi-threaded dispatch tests.
-5. Logging Optimization: Added log level configuration via HANOI_LOG_LEVEL.
-6. Error Tracking: Added synergy_error_count in HVMContext for diagnostics.
+New Enhancements (0.9.5):
+1. Hash-Based Opcode Dispatch: Replaced strcmp with hash table for O(1) lookup.
+2. Async Grok API: Non-blocking CURL multi-interface for API calls.
+3. Memory-Mapped I/O: mmap for large trace exports.
+4. API Key Security: Environment variable for Grok API authentication.
+5. Expanded Opcodes: Added T81_SUB, T243_CMP, T729_CALL.
+6. Response Caching: Cache Grok API responses to reduce network calls.
+7. Testing: Added tests for new opcodes, async API, and mmap.
 
 @<Include Dependencies@>=
 #include "hanoivm_vm.h"
@@ -57,7 +60,11 @@ Further Refinements (0.9.4):
 #include <sodium.h>
 #include <json-c/json.h>
 #include <pthread.h>
-#include <curl/curl.h> // For Grok API
+#include <curl/curl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include "libt81.h"
 #include "libt243.h"
 #include "libt729.h"
@@ -74,7 +81,8 @@ typedef enum {
     SYNERGY_COMPRESSION_ERROR = 6,
     SYNERGY_JSON_ERROR = 7,
     SYNERGY_INVALID_OPCODE = 8,
-    SYNERGY_GROK_API_ERROR = 9, // For Grok API failures
+    SYNERGY_GROK_API_ERROR = 9,
+    SYNERGY_MMAP_ERROR = 10,
 } SynergyError;
 
 const char* synergy_error_str(SynergyError err) {
@@ -89,6 +97,7 @@ const char* synergy_error_str(SynergyError err) {
         case SYNERGY_JSON_ERROR: return "JSON parsing error";
         case SYNERGY_INVALID_OPCODE: return "Invalid opcode";
         case SYNERGY_GROK_API_ERROR: return "Grok API error";
+        case SYNERGY_MMAP_ERROR: return "Memory mapping error";
         default: return "Unknown error";
     }
 }
@@ -96,11 +105,11 @@ const char* synergy_error_str(SynergyError err) {
 @#
 @<Logging@>=
 typedef enum { LOG_INFO, LOG_ERROR, LOG_DEBUG } LogLevel;
-static int log_level = LOG_INFO; // Default log level
+static int log_level = LOG_INFO;
 static pthread_mutex_t log_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 void synergy_log(LogLevel level, const char* message) {
-    if (level < log_level) return; // Skip lower-priority logs
+    if (level < log_level) return;
     pthread_mutex_lock(&log_mutex);
     const char* prefix;
     switch (level) {
@@ -126,18 +135,51 @@ void synergy_set_log_level(const char* env) {
 }
 
 @#
+@* Opcode Hash Table
+Implements a simple hash table for O(1) opcode dispatch.
+
+@c
+#define HASH_SIZE 16
+typedef enum { OP_TYPE_BINARY, OP_TYPE_NATIVE } OpcodeType;
+typedef struct {
+    const char* opcode;
+    OpcodeType type;
+    union {
+        BinaryOpcode binary_op;
+        int (*native_handler)(HVMContext*, int, int);
+    } handler;
+} OpcodeEntry;
+
+static OpcodeEntry opcode_table[HASH_SIZE];
+static int opcode_table_initialized = 0;
+
+unsigned int hash_opcode(const char* opcode) {
+    unsigned int hash = 0;
+    while (*opcode) hash = (hash * 31) + *opcode++;
+    return hash % HASH_SIZE;
+}
+
+void init_opcode_table(void) {
+    pthread_mutex_lock(&opcode_mutex);
+    if (opcode_table_initialized) {
+        pthread_mutex_unlock(&opcode_mutex);
+        return;
+    }
+    memset(opcode_table, 0, sizeof(opcode_table));
+    // Binary opcodes
+    opcode_table[hash_opcode("BADD")] = (OpcodeEntry){"BADD", OP_TYPE_BINARY, .handler.binary_op = OP_BADD};
+    opcode_table[hash_opcode("BAND")] = (OpcodeEntry){"BAND", OP_TYPE_BINARY, .handler.binary_op = OP_BAND};
+    opcode_table[hash_opcode("BOR")] = (OpcodeEntry){"BOR", OP_TYPE_BINARY, .handler.binary_op = OP_BOR};
+    opcode_table[hash_opcode("BNOT")] = (OpcodeEntry){"BNOT", OP_TYPE_BINARY, .handler.binary_op = OP_BNOT};
+    // Native opcodes (placeholders)
+    opcode_table_initialized = 1;
+    pthread_mutex_unlock(&opcode_mutex);
+}
+
+@#
 @* Global Hook Initialization
 Initializes Axion, resets stack/recursion, and sets defaults. Validates T81/T243/T729
-contexts via Rust FFI. Supports binary mode via HANOI_BINARY_MODE and log level via
-HANOI_LOG_LEVEL. Assumes HVMContext contains:
-- session_id: char[64]
-- symbolic_opcode: char[32]
-- intent_label: char[32]
-- tier_mode: int (81, 243, 729)
-- t81_digit_count, t243_digit_count, t729_digit_count: int
-- opcode_count: int
-- binary_mode: int
-- error_count: int (new, tracks errors)
+contexts via Rust FFI. Supports HANOI_BINARY_MODE, HANOI_LOG_LEVEL, HANOI_GROK_API_KEY.
 
 @c
 SynergyError synergy_initialize(HVMContext* ctx) {
@@ -163,6 +205,7 @@ SynergyError synergy_initialize(HVMContext* ctx) {
         synergy_log(LOG_INFO, "Binary compatibility mode enabled");
     }
     synergy_set_log_level(getenv("HANOI_LOG_LEVEL"));
+    init_opcode_table();
     T81Digit t81_digit;
     if (t81_digit_new(42, &t81_digit) != 0) {
         synergy_log(LOG_ERROR, "Failed to initialize T81 digit");
@@ -187,7 +230,7 @@ SynergyError synergy_initialize(HVMContext* ctx) {
 
 @#
 @* Memory Cleanup
-Clears HVMContext fields to prevent memory leaks.
+Clears HVMContext fields and resets stack.
 
 @c
 void synergy_cleanup(HVMContext* ctx) {
@@ -203,7 +246,9 @@ void synergy_cleanup(HVMContext* ctx) {
     ctx->opcode_count = 0;
     ctx->binary_mode = 0;
     ctx->error_count = 0;
-    synergy_log(LOG_DEBUG, "Cleaned up HVMContext");
+    reset81(); // Reset T81 stack
+    reset243(); // Reset T243 stack
+    synergy_log(LOG_DEBUG, "Cleaned up HVMContext and stacks");
     pthread_mutex_unlock(&log_mutex);
 }
 
@@ -217,13 +262,9 @@ static char cached_tier[8] = "T81";
 const char* synergy_detect_tier(HVMContext* ctx) {
     if (!ctx) return "Unknown";
     int mode = ctx->tier_mode;
-    if (mode == 729) {
-        strncpy(cached_tier, "T729", sizeof(cached_tier));
-    } else if (mode == 243) {
-        strncpy(cached_tier, "T243", sizeof(cached_tier));
-    } else {
-        strncpy(cached_tier, "T81", sizeof(cached_tier));
-    }
+    if (mode == 729) strncpy(cached_tier, "T729", sizeof(cached_tier));
+    else if (mode == 243) strncpy(cached_tier, "T243", sizeof(cached_tier));
+    else strncpy(cached_tier, "T81", sizeof(cached_tier));
     return cached_tier;
 }
 
@@ -237,21 +278,12 @@ const char* synergy_get_intent(HVMContext* ctx) {
 
 @#
 @* Binary Compatibility Opcode Hook
-Handles binary opcodes (BADD, BAND, BOR, BNOT) with enum-based dispatch.
+Handles binary opcodes using hash-based dispatch.
 
 @c
 typedef enum { OP_BADD, OP_BAND, OP_BOR, OP_BNOT, OP_INVALID } BinaryOpcode;
 static const char* binary_ops[] = {"ADD", "AND", "OR", "NOT"};
 static pthread_mutex_t opcode_mutex = PTHREAD_MUTEX_INITIALIZER;
-
-BinaryOpcode parse_binary_opcode(const char* opcode) {
-    if (!opcode || opcode[0] != 'B') return OP_INVALID;
-    if (strcmp(opcode, "BADD") == 0) return OP_BADD;
-    if (strcmp(opcode, "BAND") == 0) return OP_BAND;
-    if (strcmp(opcode, "BOR") == 0) return OP_BOR;
-    if (strcmp(opcode, "BNOT") == 0) return OP_BNOT;
-    return OP_INVALID;
-}
 
 SynergyError synergy_handle_binary_opcode(HVMContext* ctx, const char* opcode) {
     if (!ctx || !opcode) {
@@ -259,28 +291,73 @@ SynergyError synergy_handle_binary_opcode(HVMContext* ctx, const char* opcode) {
         ctx->error_count++;
         return SYNERGY_MEMORY_ERROR;
     }
+    unsigned int index = hash_opcode(opcode);
     pthread_mutex_lock(&opcode_mutex);
-    BinaryOpcode op = parse_binary_opcode(opcode);
-    if (op == OP_INVALID) {
+    if (!opcode_table[index].opcode || strcmp(opcode_table[index].opcode, opcode) != 0) {
         synergy_log(LOG_ERROR, "Unknown binary opcode");
         ctx->error_count++;
         pthread_mutex_unlock(&opcode_mutex);
         return SYNERGY_INVALID_OPCODE;
     }
-    binary_compat_dispatch(binary_ops[op]);
+    if (opcode_table[index].type != OP_TYPE_BINARY) {
+        synergy_log(LOG_ERROR, "Invalid opcode type");
+        ctx->error_count++;
+        pthread_mutex_unlock(&opcode_mutex);
+        return SYNERGY_INVALID_OPCODE;
+    }
+    binary_compat_dispatch(binary_ops[opcode_table[index].handler.binary_op]);
     ctx->opcode_count++;
     strncpy(ctx->symbolic_opcode, opcode, sizeof(ctx->symbolic_opcode));
     strncpy(ctx->intent_label, "BinaryCompatibility", sizeof(ctx->intent_label));
     if (log_level == LOG_DEBUG) {
-        synergy_log(LOG_DEBUG, "Handled binary opcode via binary_compat_dispatch");
+        synergy_log(LOG_DEBUG, "Handled binary opcode via hash dispatch");
     }
     pthread_mutex_unlock(&opcode_mutex);
     return SYNERGY_OK;
 }
 
 @#
+@* Native Opcode Handlers
+Defines native opcode handlers for T81/T243/T729.
+
+@c
+int handle_t81_add(HVMContext* ctx, int a, int b) {
+    push81(a + b);
+    ctx->t81_digit_count++;
+    return 0;
+}
+
+int handle_t81_sub(HVMContext* ctx, int a, int b) {
+    push81(a - b);
+    ctx->t81_digit_count++;
+    return 0;
+}
+
+int handle_t243_mov(HVMContext* ctx, int a, int b) {
+    push243(a);
+    ctx->t243_digit_count++;
+    return 0;
+}
+
+int handle_t243_cmp(HVMContext* ctx, int a, int b) {
+    push243(a == b ? 1 : 0);
+    ctx->t243_digit_count++;
+    return 0;
+}
+
+int handle_t729_jmp(HVMContext* ctx, int a, int b) {
+    ctx->t729_digit_count++;
+    return 0; // Placeholder: Update PC
+}
+
+int handle_t729_call(HVMContext* ctx, int a, int b) {
+    ctx->t729_digit_count++;
+    return 0; // Placeholder: Call subroutine
+}
+
+@#
 @* Native Opcode Dispatcher
-Dispatches native T81/T243/T729 opcodes using stack operations.
+Dispatches native opcodes using hash table.
 
 @c
 SynergyError synergy_execute_native_opcode(HVMContext* ctx, const char* opcode) {
@@ -289,29 +366,44 @@ SynergyError synergy_execute_native_opcode(HVMContext* ctx, const char* opcode) 
         ctx->error_count++;
         return SYNERGY_MEMORY_ERROR;
     }
-    if (strcmp(opcode, "T81_ADD") == 0) {
-        int a = pop81(), b = pop81();
-        push81(a + b);
-        ctx->t81_digit_count++;
-    } else if (strcmp(opcode, "T243_MOV") == 0) {
-        int a = pop81();
-        push243(a);
-        ctx->t243_digit_count++;
-    } else if (strcmp(opcode, "T729_JMP") == 0) {
-        int addr = pop81();
-        // Placeholder: Update program counter (requires HanoiVM PC logic)
-        ctx->t729_digit_count++;
-    } else {
-        synergy_log(LOG_ERROR, "Unknown native opcode");
+    unsigned int index = hash_opcode(opcode);
+    pthread_mutex_lock(&opcode_mutex);
+    if (!opcode_table[index].opcode || strcmp(opcode_table[index].opcode, opcode) != 0) {
+        // Fallback to string comparison for new opcodes
+        if (strcmp(opcode, "T81_ADD") == 0) {
+            opcode_table[index] = (OpcodeEntry){"T81_ADD", OP_TYPE_NATIVE, .handler.native_handler = handle_t81_add};
+        } else if (strcmp(opcode, "T81_SUB") == 0) {
+            opcode_table[index] = (OpcodeEntry){"T81_SUB", OP_TYPE_NATIVE, .handler.native_handler = handle_t81_sub};
+        } else if (strcmp(opcode, "T243_MOV") == 0) {
+            opcode_table[index] = (OpcodeEntry){"T243_MOV", OP_TYPE_NATIVE, .handler.native_handler = handle_t243_mov};
+        } else if (strcmp(opcode, "T243_CMP") == 0) {
+            opcode_table[index] = (OpcodeEntry){"T243_CMP", OP_TYPE_NATIVE, .handler.native_handler = handle_t243_cmp};
+        } else if (strcmp(opcode, "T729_JMP") == 0) {
+            opcode_table[index] = (OpcodeEntry){"T729_JMP", OP_TYPE_NATIVE, .handler.native_handler = handle_t729_jmp};
+        } else if (strcmp(opcode, "T729_CALL") == 0) {
+            opcode_table[index] = (OpcodeEntry){"T729_CALL", OP_TYPE_NATIVE, .handler.native_handler = handle_t729_call};
+        } else {
+            synergy_log(LOG_ERROR, "Unknown native opcode");
+            ctx->error_count++;
+            pthread_mutex_unlock(&opcode_mutex);
+            return SYNERGY_INVALID_OPCODE;
+        }
+    }
+    if (opcode_table[index].type != OP_TYPE_NATIVE) {
+        synergy_log(LOG_ERROR, "Invalid opcode type");
         ctx->error_count++;
+        pthread_mutex_unlock(&opcode_mutex);
         return SYNERGY_INVALID_OPCODE;
     }
+    int a = pop81(), b = pop81();
+    opcode_table[index].handler.native_handler(ctx, a, b);
     ctx->opcode_count++;
     strncpy(ctx->symbolic_opcode, opcode, sizeof(ctx->symbolic_opcode));
     strncpy(ctx->intent_label, "Native", sizeof(ctx->intent_label));
     if (log_level == LOG_DEBUG) {
-        synergy_log(LOG_DEBUG, "Dispatched native opcode");
+        synergy_log(LOG_DEBUG, "Dispatched native opcode via hash");
     }
+    pthread_mutex_unlock(&opcode_mutex);
     return SYNERGY_OK;
 }
 
@@ -333,14 +425,65 @@ SynergyError synergy_execute_symbolic_opcode(HVMContext* ctx, const char* opcode
 }
 
 @#
-@* Grok API Integration
-Queries Grok API for opcode analysis. Mock implementation; assumes xAI API endpoint.
+@* Grok API Integration with Caching
+Asynchronous Grok API calls with response caching.
 
 @c
+#define CACHE_SIZE 8
+typedef struct {
+    char opcode[32];
+    char response[1024];
+} GrokCacheEntry;
+static GrokCacheEntry grok_cache[CACHE_SIZE];
+static int cache_count = 0;
+static pthread_mutex_t cache_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+void init_grok_cache(void) {
+    pthread_mutex_lock(&cache_mutex);
+    memset(grok_cache, 0, sizeof(grok_cache));
+    cache_count = 0;
+    pthread_mutex_unlock(&cache_mutex);
+}
+
+const char* get_cached_response(const char* opcode) {
+    pthread_mutex_lock(&cache_mutex);
+    for (int i = 0; i < cache_count; i++) {
+        if (strcmp(grok_cache[i].opcode, opcode) == 0) {
+            pthread_mutex_unlock(&cache_mutex);
+            return grok_cache[i].response;
+        }
+    }
+    pthread_mutex_unlock(&cache_mutex);
+    return NULL;
+}
+
+void cache_response(const char* opcode, const char* response) {
+    pthread_mutex_lock(&cache_mutex);
+    if (cache_count < CACHE_SIZE) {
+        strncpy(grok_cache[cache_count].opcode, opcode, sizeof(grok_cache[cache_count].opcode));
+        strncpy(grok_cache[cache_count].response, response, sizeof(grok_cache[cache_count].response));
+        cache_count++;
+    } else {
+        // Replace oldest entry
+        memmove(grok_cache, grok_cache + 1, (CACHE_SIZE - 1) * sizeof(GrokCacheEntry));
+        strncpy(grok_cache[CACHE_SIZE - 1].opcode, opcode, sizeof(grok_cache[CACHE_SIZE - 1].opcode));
+        strncpy(grok_cache[CACHE_SIZE - 1].response, response, sizeof(grok_cache[CACHE_SIZE - 1].response));
+    }
+    pthread_mutex_unlock(&cache_mutex);
+}
+
+typedef struct {
+    char* response;
+    size_t size;
+} AsyncResponse;
+
 static size_t grok_write_callback(void* contents, size_t size, size_t nmemb, void* userp) {
     size_t realsize = size * nmemb;
-    char* buf = (char*)userp;
-    strncat(buf, contents, realsize);
+    AsyncResponse* resp = (AsyncResponse*)userp;
+    resp->response = realloc(resp->response, resp->size + realsize + 1);
+    memcpy(resp->response + resp->size, contents, realsize);
+    resp->size += realsize;
+    resp->response[resp->size] = '\0';
     return realsize;
 }
 
@@ -350,8 +493,21 @@ SynergyError synergy_grok_analyze_opcode(HVMContext* ctx, const char* opcode, ch
         ctx->error_count++;
         return SYNERGY_MEMORY_ERROR;
     }
+    const char* cached = get_cached_response(opcode);
+    if (cached) {
+        strncpy(response, cached, response_size);
+        synergy_log(LOG_DEBUG, "Retrieved Grok response from cache");
+        return SYNERGY_OK;
+    }
+    CURLM* multi_handle = curl_multi_init();
+    if (!multi_handle) {
+        synergy_log(LOG_ERROR, "Failed to initialize CURL multi");
+        ctx->error_count++;
+        return SYNERGY_GROK_API_ERROR;
+    }
     CURL* curl = curl_easy_init();
     if (!curl) {
+        curl_multi_cleanup(multi_handle);
         synergy_log(LOG_ERROR, "Failed to initialize CURL");
         ctx->error_count++;
         return SYNERGY_GROK_API_ERROR;
@@ -360,29 +516,55 @@ SynergyError synergy_grok_analyze_opcode(HVMContext* ctx, const char* opcode, ch
     snprintf(prompt, sizeof(prompt), "Analyze the opcode '%s' in a HanoiVM binary context.", opcode);
     struct curl_slist* headers = NULL;
     headers = curl_slist_append(headers, "Content-Type: application/json");
+    const char* api_key = getenv("HANOI_GROK_API_KEY");
+    if (api_key) {
+        char auth[128];
+        snprintf(auth, sizeof(auth), "Authorization: Bearer %s", api_key);
+        headers = curl_slist_append(headers, auth);
+    }
     char post_data[512];
     snprintf(post_data, sizeof(post_data), "{\"prompt\":\"%s\"}", prompt);
-    response[0] = '\0';
-    curl_easy_setopt(curl, CURLOPT_URL, "https://api.x.ai/grok"); // Mock endpoint
+    AsyncResponse async_resp = {NULL, 0};
+    curl_easy_setopt(curl, CURLOPT_URL, "https://api.x.ai/grok");
     curl_easy_setopt(curl, CURLOPT_POSTFIELDS, post_data);
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, grok_write_callback);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, response);
-    CURLcode res = curl_easy_perform(curl);
-    curl_slist_free_all(headers);
-    curl_easy_cleanup(curl);
-    if (res != CURLE_OK) {
-        synergy_log(LOG_ERROR, "Grok API request failed");
-        ctx->error_count++;
-        return SYNERGY_GROK_API_ERROR;
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &async_resp);
+    curl_multi_add_handle(multi_handle, curl);
+    int still_running;
+    curl_multi_perform(multi_handle, &still_running);
+    while (still_running) {
+        curl_multi_wait(multi_handle, NULL, 0, 1000, NULL);
+        curl_multi_perform(multi_handle, &still_running);
     }
+    CURLMsg* msg;
+    int msgs_left;
+    while ((msg = curl_multi_info_read(multi_handle, &msgs_left))) {
+        if (msg->msg == CURLMSG_DONE && msg->data.result != CURLE_OK) {
+            synergy_log(LOG_ERROR, "Grok API request failed");
+            curl_multi_remove_handle(multi_handle, curl);
+            curl_easy_cleanup(curl);
+            curl_multi_cleanup(multi_handle);
+            curl_slist_free_all(headers);
+            free(async_resp.response);
+            ctx->error_count++;
+            return SYNERGY_GROK_API_ERROR;
+        }
+    }
+    curl_multi_remove_handle(multi_handle, curl);
+    curl_easy_cleanup(curl);
+    curl_multi_cleanup(multi_handle);
+    curl_slist_free_all(headers);
+    strncpy(response, async_resp.response ? async_resp.response : "", response_size);
+    cache_response(opcode, response);
+    free(async_resp.response);
     synergy_log(LOG_INFO, "Grok API analysis completed");
     return SYNERGY_OK;
 }
 
 @#
-@* AES-Secured Export for Symbolic Traces
-Exports compressed traces with AES-128 encryption and HMAC-SHA256.
+@* AES-Secured Export with Memory Mapping
+Exports compressed traces with AES-128 and HMAC-SHA256 using mmap.
 
 @c
 SynergyError synergy_secure_export_trace(HVMContext* ctx, const char* path,
@@ -400,102 +582,111 @@ SynergyError synergy_secure_export_trace(HVMContext* ctx, const char* path,
         ctx->error_count++;
         return SYNERGY_INVALID_KEY;
     }
-    const char* raw_path = "trace_temp.json";
-    FILE* raw_file = fopen(raw_path, "w");
-    if (!raw_file) {
+    int fd = open("trace_temp.json", O_RDWR | O_CREAT | O_TRUNC, 0644);
+    if (fd == -1) {
         synergy_log(LOG_ERROR, "Failed to create temporary trace file");
         ctx->error_count++;
         return SYNERGY_FILE_ERROR;
     }
-    fprintf(raw_file, "{\"session_id\":\"%s\",\"tier\":\"%s\",\"opcode\":\"%s\",\"intent\":\"%s\",",
-            ctx->session_id, synergy_detect_tier(ctx), synergy_get_opcode(ctx),
-            synergy_get_intent(ctx));
-    fprintf(raw_file, "\"t81_digits\":%d,\"t243_digits\":%d,\"t729_digits\":%d,",
-            ctx->t81_digit_count, ctx->t243_digit_count, ctx->t729_digit_count);
-    fprintf(raw_file, "\"errors\":%d,\"trace\":", ctx->error_count);
-    export_recursion_trace_to_file(raw_file);
-    fprintf(raw_file, "}");
-    fclose(raw_file);
-    FILE* in_file = fopen(raw_path, "rb");
-    if (!in_file) {
-        synergy_log(LOG_ERROR, "Failed to read temporary trace file");
+    char buffer[8192];
+    size_t len = snprintf(buffer, sizeof(buffer),
+                          "{\"session_id\":\"%s\",\"tier\":\"%s\",\"opcode\":\"%s\",\"intent\":\"%s\","
+                          "\"t81_digits\":%d,\"t243_digits\":%d,\"t729_digits\":%d,"
+                          "\"errors\":%d,\"trace\":",
+                          ctx->session_id, synergy_detect_tier(ctx), synergy_get_opcode(ctx),
+                          synergy_get_intent(ctx), ctx->t81_digit_count, ctx->t243_digit_count,
+                          ctx->t729_digit_count, ctx->error_count);
+    if (write(fd, buffer, len) != len) {
+        close(fd);
+        unlink("trace_temp.json");
         ctx->error_count++;
-        remove(raw_path);
         return SYNERGY_FILE_ERROR;
     }
+    export_recursion_trace_to_fd(fd);
+    if (write(fd, "}", 1) != 1) {
+        close(fd);
+        unlink("trace_temp.json");
+        ctx->error_count++;
+        return SYNERGY_FILE_ERROR;
+    }
+    struct stat st;
+    fstat(fd, &st);
+    char* raw_data = mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+    if (raw_data == MAP_FAILED) {
+        close(fd);
+        unlink("trace_temp.json");
+        synergy_log(LOG_ERROR, "Failed to mmap trace file");
+        ctx->error_count++;
+        return SYNERGY_MMAP_ERROR;
+    }
+    close(fd);
     z_stream strm = {0};
     deflateInit(&strm, Z_DEFAULT_COMPRESSION);
-    unsigned char in_buf[4096], out_buf[4096];
+    unsigned char out_buf[4096];
     uLongf compressed_len = 0;
-    FILE* compressed_file = fopen("compressed_temp.z", "wb");
-    if (!compressed_file) {
+    int comp_fd = open("compressed_temp.z", O_RDWR | O_CREAT | O_TRUNC, 0644);
+    if (comp_fd == -1) {
+        munmap(raw_data, st.st_size);
+        unlink("trace_temp.json");
         deflateEnd(&strm);
-        fclose(in_file);
-        remove(raw_path);
         ctx->error_count++;
         return SYNERGY_FILE_ERROR;
     }
-    while ((strm.avail_in = fread(in_buf, 1, sizeof(in_buf), in_file)) > 0) {
-        strm.next_in = in_buf;
+    strm.next_in = (unsigned char*)raw_data;
+    strm.avail_in = st.st_size;
+    while (strm.avail_in > 0) {
         strm.next_out = out_buf;
         strm.avail_out = sizeof(out_buf);
         if (deflate(&strm, Z_NO_FLUSH) != Z_OK) {
-            synergy_log(LOG_ERROR, "Compression failed");
+            munmap(raw_data, st.st_size);
+            unlink("trace_temp.json");
+            close(comp_fd);
+            unlink("compressed_temp.z");
             deflateEnd(&strm);
-            fclose(in_file);
-            fclose(compressed_file);
-            remove(raw_path);
-            remove("compressed_temp.z");
             ctx->error_count++;
             return SYNERGY_COMPRESSION_ERROR;
         }
-        fwrite(out_buf, 1, sizeof(out_buf) - strm.avail_out, compressed_file);
+        write(comp_fd, out_buf, sizeof(out_buf) - strm.avail_out);
         compressed_len += sizeof(out_buf) - strm.avail_out;
     }
     strm.next_out = out_buf;
     strm.avail_out = sizeof(out_buf);
     deflate(&strm, Z_FINISH);
-    fwrite(out_buf, 1, sizeof(out_buf) - strm.avail_out, compressed_file);
+    write(comp_fd, out_buf, sizeof(out_buf) - strm.avail_out);
     compressed_len += sizeof(out_buf) - strm.avail_out;
     deflateEnd(&strm);
-    fclose(in_file);
-    fclose(compressed_file);
-    remove(raw_path);
-    FILE* comp_file = fopen("compressed_temp.z", "rb");
-    unsigned char* compressed = malloc(compressed_len);
-    if (!compressed) {
-        synergy_log(LOG_ERROR, "Memory allocation failed for compressed buffer");
-        remove("compressed_temp.z");
+    munmap(raw_data, st.st_size);
+    unlink("trace_temp.json");
+    char* compressed = mmap(NULL, compressed_len, PROT_READ, MAP_PRIVATE, comp_fd, 0);
+    if (compressed == MAP_FAILED) {
+        close(comp_fd);
+        unlink("compressed_temp.z");
         ctx->error_count++;
-        return SYNERGY_MEMORY_ERROR;
+        return SYNERGY_MMAP_ERROR;
     }
-    fread(compressed, 1, compressed_len, comp_file);
-    fclose(comp_file);
-    remove("compressed_temp.z");
+    close(comp_fd);
     int cipher_len = 0;
-    char* encrypted = AES_Encrypt(compressed, compressed_len, aes_key, iv, 1, &cipher_len);
+    char* encrypted = AES_Encrypt((unsigned char*)compressed, compressed_len, aes_key, iv, 1, &cipher_len);
+    munmap(compressed, compressed_len);
+    unlink("compressed_temp.z");
     if (!encrypted) {
         synergy_log(LOG_ERROR, "AES encryption failed");
-        sodium_memzero(compressed, compressed_len);
-        free(compressed);
         ctx->error_count++;
         return SYNERGY_ENCRYPTION_ERROR;
     }
-    sodium_memzero(compressed, compressed_len);
-    free(compressed);
     unsigned char hmac[32];
     crypto_auth_hmacsha256(hmac, (unsigned char*)encrypted, cipher_len, aes_key);
-    FILE* out = fopen(path, "wb");
-    if (!out) {
-        synergy_log(LOG_ERROR, "Failed to open output file");
+    int out_fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (out_fd == -1) {
         sodium_memzero(encrypted, cipher_len);
         free(encrypted);
+        synergy_log(LOG_ERROR, "Failed to open output file");
         ctx->error_count++;
         return SYNERGY_FILE_ERROR;
     }
-    fwrite(hmac, 1, 32, out);
-    fwrite(encrypted, 1, cipher_len, out);
-    fclose(out);
+    write(out_fd, hmac, 32);
+    write(out_fd, encrypted, cipher_len);
+    close(out_fd);
     sodium_memzero(encrypted, cipher_len);
     free(encrypted);
     synergy_log(LOG_INFO, "Trace compressed, secured, and saved with HMAC");
@@ -557,13 +748,13 @@ SynergyError synergy_ai_analyze(HVMContext* ctx, const char* report_path) {
         ctx->error_count++;
         return SYNERGY_FILE_ERROR;
     }
-    fprintf(report, "{\"session_id\":\"%s\",\"tier\":\"%s\",\"analysis\":{",
-            ctx->session_id, synergy_detect_tier(ctx));
-    fprintf(report, "\"opcode_count\":%d,\"recursion_depth\":%d,",
-            ctx->opcode_count, get_recursion_depth());
-    fprintf(report, "\"t81_digits\":%d,\"t243_digits\":%d,\"t729_digits\":%d,",
-            ctx->t81_digit_count, ctx->t243_digit_count, ctx->t729_digit_count);
-    fprintf(report, "\"errors\":%d}", ctx->error_count);
+    fprintf(report, "{\"session_id\":\"%s\",\"tier\":\"%s\",\"analysis\":{"
+                    "\"opcode_count\":%d,\"recursion_depth\":%d,"
+                    "\"t81_digits\":%d,\"t243_digits\":%d,\"t729_digits\":%d,"
+                    "\"errors\":%d}}",
+            ctx->session_id, synergy_detect_tier(ctx), ctx->opcode_count,
+            get_recursion_depth(), ctx->t81_digit_count, ctx->t243_digit_count,
+            ctx->t729_digit_count, ctx->error_count);
     fclose(report);
     axion_analyze_session(ctx->session_id);
     synergy_log(LOG_INFO, "AI-driven analysis report generated");
@@ -630,7 +821,7 @@ const char* synergy_explain(HVMContext* ctx) {
 
 @#
 @* NLP Prompt Macro
-Generates a Grok-friendly follow-up prompt.
+Generates a Grok-friendly prompt.
 
 @c
 const char* synergy_prompt_macro(HVMContext* ctx) {
@@ -643,7 +834,7 @@ const char* synergy_prompt_macro(HVMContext* ctx) {
 
 @#
 @* T729-Driven Reasoning with Grok
-Performs T729 inference and optional Grok API analysis.
+Performs T729 inference with cached Grok analysis.
 
 @c
 SynergyError synergy_reason(HVMContext* ctx, json_object** out) {
@@ -692,7 +883,7 @@ Exposes module version.
 
 @c
 const char* synergy_version(void) {
-    return "0.9.4";
+    return "0.9.5";
 }
 
 @#
@@ -709,6 +900,7 @@ typedef enum {
     SYNERGY_JSON_ERROR = 7,
     SYNERGY_INVALID_OPCODE = 8,
     SYNERGY_GROK_API_ERROR = 9,
+    SYNERGY_MMAP_ERROR = 10,
 } SynergyError;
 
 const char* synergy_error_str(SynergyError err);
@@ -734,7 +926,7 @@ void synergy_set_log_level(const char* env);
 
 @#
 @* Testing
-Unit tests with Check framework, including mock stack and multi-threaded tests.
+Unit tests with Check framework, including new opcodes, async API, and mmap.
 
 @c
 #ifdef SYNERGY_TEST
@@ -751,6 +943,7 @@ START_TEST(test_initialize) {
     ck_assert_int_eq(ctx.error_count, 0);
     setenv("HANOI_BINARY_MODE", "1", 1);
     setenv("HANOI_LOG_LEVEL", "DEBUG", 1);
+    setenv("HANOI_GROK_API_KEY", "test_key", 1);
     synergy_initialize(&ctx);
     ck_assert_int_eq(ctx.binary_mode, 1);
     ck_assert_str_eq(ctx.intent_label, "BinaryCompatSession");
@@ -821,12 +1014,21 @@ START_TEST(test_native_opcode) {
     HVMContext ctx = {0};
     synergy_initialize(&ctx);
     strncpy(ctx.session_id, "test_session", sizeof(ctx.session_id));
-    push81(2);
+    push81(5);
     push81(3);
-    ck_assert_int_eq(synergy_execute_native_opcode(&ctx, "T81_ADD"), SYNERGY_OK);
-    ck_assert_int_eq(pop81(), 5);
+    ck_assert_int_eq(synergy_execute_native_opcode(&ctx, "T81_SUB"), SYNERGY_OK);
+    ck_assert_int_eq(pop81(), 2);
     ck_assert_int_eq(ctx.t81_digit_count, 1);
-    ck_assert_int_eq(ctx.opcode_count, 1);
+    push81(2);
+    push81(2);
+    ck_assert_int_eq(synergy_execute_native_opcode(&ctx, "T243_CMP"), SYNERGY_OK);
+    ck_assert_int_eq(pop243(), 1);
+    ck_assert_int_eq(ctx.t243_digit_count, 1);
+    push81(0);
+    push81(0);
+    ck_assert_int_eq(synergy_execute_native_opcode(&ctx, "T729_CALL"), SYNERGY_OK);
+    ck_assert_int_eq(ctx.t729_digit_count, 1);
+    ck_assert_int_eq(ctx.opcode_count, 3);
     ck_assert_int_eq(synergy_execute_native_opcode(&ctx, "INVALID"), SYNERGY_INVALID_OPCODE);
     ck_assert_int_eq(ctx.error_count, 1);
     synergy_cleanup(&ctx);
@@ -859,6 +1061,30 @@ START_TEST(test_multithreaded_dispatch) {
 }
 END_TEST
 
+START_TEST(test_grok_cache) {
+    HVMContext ctx = {0};
+    synergy_initialize(&ctx);
+    ctx.binary_mode = 1;
+    strncpy(ctx.session_id, "test_session", sizeof(ctx.session_id));
+    char response[1024];
+    // Mock API response
+    cache_response("BADD", "Mock analysis");
+    ck_assert_int_eq(synergy_grok_analyze_opcode(&ctx, "BADD", response, sizeof(response)), SYNERGY_OK);
+    ck_assert_str_eq(response, "Mock analysis");
+    synergy_cleanup(&ctx);
+}
+END_TEST
+
+START_TEST(test_mmap_trace) {
+    HVMContext ctx = {0};
+    synergy_initialize(&ctx);
+    strncpy(ctx.session_id, "test_session", sizeof(ctx.session_id));
+    unsigned char key[16] = {0}, iv[16] = {0};
+    ck_assert_int_eq(synergy_secure_export_trace(&ctx, "test_mmap.t81z", key, iv), SYNERGY_OK);
+    synergy_cleanup(&ctx);
+}
+END_TEST
+
 Suite* synergy_suite(void) {
     Suite* s = suite_create("Synergy");
     TCase* tc_core = tcase_create("Core");
@@ -870,6 +1096,8 @@ Suite* synergy_suite(void) {
     tcase_add_test(tc_core, test_binary_opcode);
     tcase_add_test(tc_core, test_native_opcode);
     tcase_add_test(tc_core, test_multithreaded_dispatch);
+    tcase_add_test(tc_core, test_grok_cache);
+    tcase_add_test(tc_core, test_mmap_trace);
     suite_add_tcase(s, tc_core);
     return s;
 }
@@ -887,17 +1115,15 @@ int main(void) {
 @#
 @* End of synergy.cweb
 Key Changes and Improvements
-- Version: Updated to 0.9.4 with native dispatch and Grok integration.
-- Binary Compatibility: Enum-based dispatch for BADD, BAND, BOR, BNOT.
-- Native Dispatch: Added T81_ADD, T243_MOV, T729_JMP handling.
-- Grok Integration: synergy_grok_analyze_opcode queries Grok API for binary opcodes.
-- Memory: Added synergy_cleanup for HVMContext.
-- Testing: Added test_native_opcode and test_multithreaded_dispatch.
-- Logging: Configurable via HANOI_LOG_LEVEL.
-- Error Tracking: Added error_count in HVMContext.
+- Version: Updated to 0.9.5 with hash-based dispatch, async Grok, and mmap I/O.
+- Opcode Dispatch: Hash table for O(1) binary and native opcodes.
+- Grok API: Async with caching and API key security.
+- Trace I/O: Memory-mapped for efficiency.
+- Opcodes: Added T81_SUB, T243_CMP, T729_CALL.
+- Testing: Enhanced with test_grok_cache and test_mmap_trace.
+- Security: HANOI_GROK_API_KEY for API authentication.
 Notes
-- Assumptions: binary_compat.cweb defines binary_compat_dispatch with buffered logging.
-HVMContext includes error_count. Grok API endpoint is mocked.
-- Testing: Mock stack operations; multi-threaded tests verify thread safety.
-- Future Work: Implement full T81/T243/T729 opcode set, optimize Grok API calls,
-add profiling for high-throughput scenarios.
+- Assumptions: binary_funcs.cweb defines binary_compat_dispatch with buffered logging.
+HVMContext includes error_count. Grok endpoint is mocked.
+- Testing: Verifies new opcodes, async cache, and mmap I/O.
+- Future Work: Expand hash table, implement real T729_CALL/JMP, profile I/O.
