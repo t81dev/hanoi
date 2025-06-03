@@ -1,5 +1,7 @@
 🤖 AGI_compare.md — Comparing AGI Architectures (HanoiVM vs Others)
 
+> **Disclaimer:** Comparisons in this document reference conceptual AGI features that remain unverified. See `README.md` and `docs/STATUS.md` for up‑to‑date information on actual capabilities.
+
 This document compares the HanoiVM + Axion AI system to other well-known AGI-related platforms, highlighting symbolic depth, memory, planning ability, and hardware orientation.
 
 ⸻

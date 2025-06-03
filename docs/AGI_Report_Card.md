@@ -1,5 +1,7 @@
 # 🧠 AGI Report Card — *HanoiVM + Axion AI (Tier-25)*
 
+> **Disclaimer:** AGI metrics and capabilities listed here are conceptual and have not been verified. Refer to `README.md` and `docs/STATUS.md` for actual project status.
+
 **Session:** `axiom_tier25_ethics`
 **Entropy Score:** `1.95` — *Ascending Trend*
 **Cognitive Depth:** `Tier-25`
