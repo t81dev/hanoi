@@ -92,7 +92,7 @@ The system powers the **T81Lang** language, **Axion AI** kernel module, and **Al
 
 * [x] `.cwebpkg` system for dependency management
 * [x] Modular package builds via Axion AI agent
-* [x] Release archive: `Release-v0.9-Public-Alpha.zip`
+* [x] Release archive hosted on the GitHub releases page
 * [ ] Publishing of language/runtime toolchains
 * [ ] Online CI/CD dashboards and test suite integrations
 
