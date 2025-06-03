@@ -5,15 +5,18 @@ compiles them using the TISC (Ternary Instruction Set Compiler), executes them t
 AxionCLI, and returns JSON results. The bridge listens on a ZeroMQ REP socket
 (e.g., `tcp://*:5555`) and supports commands like `tadd`, `optimize`, and `viz`, as well
 as extended AGI operations: `learn`, `dream`, `reflect`, `plan`, `simulate`. New logic
-includes ternary state tracking and recursive query chaining for enhanced symbolic reasoning.
+includes ternary state tracking, recursive query chaining, and symbolic trace logging
+for auditable AGI sessions, integrated with the Synergy module.
 
 @s zmq_t int
 @s json_t int
 @s json_object int
+@s FILE int
 
 @*1 Dependencies.
-Includes ZeroMQ for communication, json-c for JSON parsing, and axioncli.h for
-interfacing with AxionCLI. Adds standard C libraries for logging, signal handling, and dynamic memory.
+Includes ZeroMQ for communication, json-c for JSON parsing, axioncli.h for
+interfacing with AxionCLI, and synergy.h for symbolic trace logging. Adds standard
+C libraries for logging, signal handling, and dynamic memory.
 @c
 #include <zmq.h>
 #include <json-c/json.h>
@@ -24,9 +27,11 @@ interfacing with AxionCLI. Adds standard C libraries for logging, signal handlin
 #include <signal.h>
 #include <unistd.h>
 #include "axioncli.h"
+#include "synergy.h"
 
 @*1 Global State.
-Stores ZeroMQ context, socket, and a flag for shutdown. Adds a ternary state buffer for recursive query tracking.
+Stores ZeroMQ context, socket, and a flag for shutdown. Includes a ternary state
+buffer for recursive query tracking, used in trace logging.
 @c
 static void *context = NULL;
 static void *socket = NULL;
@@ -80,9 +85,10 @@ void *grok_bridge_init(const char *endpoint) {
 }
 
 @*1 Process Query.
-Receives a JSON query via ZeroMQ, parses it, executes it via AxionCLI, and returns
-a JSON result. Supports TISC commands (`cmd`), visualization (`viz`), and AGI operations
-(`learn`, `dream`, `reflect`, `plan`, `simulate`). Updates ternary state for recursive queries.
+Receives a JSON query via ZeroMQ, parses it, logs it via synergy_trace_session,
+executes it via AxionCLI, and returns a JSON result. Supports TISC commands (`cmd`),
+visualization (`viz`), and AGI operations (`learn`, `dream`, `reflect`, `plan`, `simulate`).
+Updates ternary state for recursive queries and logs to trace file for auditability.
 @c
 json_object *grok_bridge_process(void *socket) {
     zmq_msg_t msg;
@@ -136,6 +142,9 @@ json_object *grok_bridge_process(void *socket) {
         recursive = json_object_get_int(recursive_obj);
     }
 
+    // Log the query to the trace file
+    synergy_trace_session(type, value, ternary_state);
+
     syslog(LOG_INFO, "Grok bridge: Processing query: type=%s, value=%s, recursive=%d", type, value, recursive);
 
     // Update ternary state for recursive queries
@@ -179,7 +188,8 @@ cleanup:
 }
 
 @*1 AxionCLI Interface.
-Implements TISC execution, visualization, and AGI operations. Uses dynamic buffers and supports recursive query state.
+Implements TISC execution, visualization, and AGI operations. Uses dynamic buffers
+and supports recursive query state.
 @c
 json_object *axioncli_execute_tisc(const char *query) {
     char *cmd = malloc(512);
@@ -249,7 +259,7 @@ DEFINE_SIMPLE_AXIONCLI_WRAPPER(axioncli_plan, "plan")
 
 @*1 Main Loop.
 Runs the bridge server, processing queries until interrupted. Includes signal handling
-and ternary state persistence.
+and ternary state persistence. Logs queries to a trace file for auditability.
 @c
 int main() {
     openlog("grok_bridge", LOG_PID, LOG_DAEMON);
