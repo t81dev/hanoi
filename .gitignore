@@ -1,0 +1,9 @@
+# Build outputs
+*.o
+*.ko
+*.pdf
+*.zip
+# Others
+*.log
+*.tmp
+__pycache__/
