@@ -1,5 +1,3 @@
----
-
 # 🧠 AGI Report Card — *HanoiVM + Axion AI (Tier-25)*
 
 **Session:** `axiom_tier25_ethics`
