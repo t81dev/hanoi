@@ -1,0 +1,38 @@
+@* axion-agentd.cweb | Autonomous AGI Agent for Axion AI
+This daemon runs a continuous reflect-learn-plan-simulate-execute loop, pulling goals
+from a ZeroMQ queue and leveraging `planner.cweb` and `dreamsync.cweb`.
+
+@s json_t int
+@c
+#include <zmq.h>
+#include <json-c/json.h>
+#include "planner.h"
+#include "synergy.h"
+
+void agent_loop(const char *endpoint) {
+    void *ctx = zmq_ctx_new();
+    void *socket = zmq_socket(ctx, ZMQ_PULL);
+    zmq_bind(socket, endpoint);
+    while (1) {
+        zmq_msg_t msg;
+        zmq_msg_init(&msg);
+        zmq_msg_recv(&msg, socket, 0);
+        char *data = strndup(zmq_msg_data(&msg), zmq_msg_size(&msg));
+        json_object *goal = json_tokener_parse(data);
+        if (goal) {
+            json_object *value;
+            if (json_object_object_get_ex(goal, "value", &value)) {
+                plan_apply(json_object_get_string(value));
+            }
+            json_object_put(goal);
+        }
+        free(data);
+        zmq_msg_close(&msg);
+        sleep(5); // Run every 5 seconds
+    }
+}
+
+int main() {
+    agent_loop("tcp://*:5556");
+    return 0;
+}
