@@ -1,5 +1,7 @@
 # 🤖 AGENTS.md — Autonomous Agents in the HanoiVM Cognitive Stack
 
+> **Disclaimer:** AGI-related functionality described here is conceptual and has not been independently verified. See `README.md` and `docs/STATUS.md` for current project capabilities.
+
 This document defines and enumerates the key autonomous agents operating within the HanoiVM and Axion Prime AGI ecosystem. Each agent functions within the recursive, symbolic framework provided by the T81 → T243 → T729 tiered execution stack. Agents exhibit reflection, planning, learning, simulation, dreaming, and memory-based autonomy.
 
 ---
