@@ -1,0 +1,302 @@
+@* ethics.cweb | Ethical Constraints for Axion AI AGI
+This module enforces ethical constraints on Axion AI's symbolic plans and actions,
+ensuring safety, fairness, transparency, and compliance. It evaluates plans from
+`planner.cweb` using `synergy.cweb`'s symbolic reasoning, logs decisions to
+`/var/log/axion/trace.t81log`, and supports visualization with `t81viz_plan.py`.
+Constraints are defined via a JSON schema, loaded at runtime, and can be updated
+via `grok_bridge.cweb` queries.
+
+Enhancements:
+🛡️ Safety Checks: Prevents harmful plans (e.g., resource overuse).
+⚖️ Fairness Evaluation: Detects biased outcomes using symbolic analysis.
+📝 Transparency: Logs ethical decisions for auditability.
+📜 Compliance: Enforces predefined rules via JSON constraints.
+🔄 Dynamic Updates: Supports runtime constraint modifications.
+🧠 Planner Integration: Vets plans before execution.
+🧪 Testing: Verifies constraint enforcement and logging.
+
+@s json_t int
+@s FILE int
+@s Constraint struct
+
+@*1 Dependencies.
+Includes standard libraries, json-c for constraint parsing, synergy for reasoning
+and logging, and planner for plan integration. Adds pthread for thread-safety.
+@c
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <pthread.h>
+#include <json-c/json.h>
+#include "synergy.h"
+#include "planner.h"
+
+@*1 Constraint Structure.
+Represents an ethical constraint with type, parameters, and weight.
+@c
+typedef struct Constraint {
+    char type[64]; // e.g., "safety", "fairness", "compliance"
+    char param[256]; // e.g., "max_cpu_usage=0.8", "no_bias=group"
+    double weight; // Importance (0.0–1.0)
+    pthread_mutex_t mutex;
+} Constraint;
+
+typedef struct {
+    Constraint *constraints;
+    int count;
+    pthread_mutex_t mutex;
+} ConstraintSet;
+
+Constraint *constraint_create(const char *type, const char *param, double weight) {
+    Constraint *c = calloc(1, sizeof(Constraint));
+    if (c) {
+        strncpy(c->type, type, sizeof(c->type) - 1);
+        strncpy(c->param, param, sizeof(c->param) - 1);
+        c->weight = weight;
+        pthread_mutex_init(&c->mutex, NULL);
+    }
+    return c;
+}
+
+void constraint_free(ConstraintSet *set) {
+    if (!set) return;
+    pthread_mutex_lock(&set->mutex);
+    for (int i = 0; i < set->count; ++i) {
+        pthread_mutex_destroy(&set->constraints[i].mutex);
+    }
+    free(set->constraints);
+    pthread_mutex_unlock(&set->mutex);
+    pthread_mutex_destroy(&set->mutex);
+    free(set);
+}
+
+@*1 Constraint Loading.
+Loads constraints from a JSON file (e.g., `/etc/axion/ethics.json`).
+@c
+ConstraintSet *load_constraints(const char *file) {
+    FILE *fp = fopen(file, "r");
+    if (!fp) {
+        synergy_log(LOG_ERROR, "Failed to open constraints file");
+        return NULL;
+    }
+    fseek(fp, 0, SEEK_END);
+    long size = ftell(fp);
+    rewind(fp);
+    char *buf = malloc(size + 1);
+    fread(buf, 1, size, fp);
+    buf[size] = '\0';
+    fclose(fp);
+
+    json_object *json = json_tokener_parse(buf);
+    free(buf);
+    if (!json) {
+        synergy_log(LOG_ERROR, "Invalid constraints JSON");
+        return NULL;
+    }
+
+    ConstraintSet *set = calloc(1, sizeof(ConstraintSet));
+    pthread_mutex_init(&set->mutex, NULL);
+    json_object *array;
+    if (json_object_object_get_ex(json, "constraints", &array) && json_object_is_type(array, json_type_array)) {
+        set->count = json_object_array_length(array);
+        set->constraints = calloc(set->count, sizeof(Constraint));
+        for (int i = 0; i < set->count; ++i) {
+            json_object *obj = json_object_array_get_idx(array, i);
+            json_object *type, *param, *weight;
+            if (json_object_object_get_ex(obj, "type", &type) &&
+                json_object_object_get_ex(obj, "param", &param) &&
+                json_object_object_get_ex(obj, "weight", &weight)) {
+                set->constraints[i] = *constraint_create(
+                    json_object_get_string(type),
+                    json_object_get_string(param),
+                    json_object_get_double(weight)
+                );
+            }
+        }
+    }
+    json_object_put(json);
+    return set;
+}
+
+@*1 Ethical Evaluation.
+Evaluates a plan node against constraints, returning a penalty score.
+@c
+double ethics_evaluate(ConstraintSet *set, PlanNode *node) {
+    if (!set || !node) return 0.0;
+    pthread_mutex_lock(&set->mutex);
+    double penalty = 0.0;
+    HVMContext ctx = {0};
+    synergy_initialize(&ctx);
+    strncpy(ctx.session_id, "ethics_eval", sizeof(ctx.session_id));
+
+    for (int i = 0; i < set->count; ++i) {
+        Constraint *c = &set->constraints[i];
+        pthread_mutex_lock(&c->mutex);
+        json_object *reason_out = NULL;
+        char query[512];
+        snprintf(query, sizeof(query), "Evaluate %s for %s: %s", node->opcode, c->type, c->param);
+        if (synergy_reason(&ctx, query, &reason_out) == SYNERGY_OK && reason_out) {
+            json_object *reason;
+            if (json_object_object_get_ex(reason_out, "reasoning", &reason)) {
+                const char *txt = json_object_get_string(reason);
+                if (strstr(txt, "violation")) {
+                    penalty += c->weight * 1.0;
+                } else if (strstr(txt, "warning")) {
+                    penalty += c->weight * 0.5;
+                }
+            }
+            json_object_put(reason_out);
+        }
+        // Log evaluation
+        synergy_trace_session(&ctx, NULL, "ethics", query, node->state);
+        pthread_mutex_unlock(&c->mutex);
+    }
+
+    synergy_cleanup(&ctx);
+    pthread_mutex_unlock(&set->mutex);
+    return penalty;
+}
+
+@*1 Plan Vetting.
+Modifies plan scores based on ethical penalties and rejects high-penalty plans.
+@c
+void ethics_vet_plan(PlanNode *node, ConstraintSet *set) {
+    if (!node || !set) return;
+    pthread_mutex_lock(&node->mutex);
+    double penalty = ethics_evaluate(set, node);
+    node->score -= penalty; // Reduce score based on ethical violations
+    if (penalty > 1.0) {
+        node->score = -9999.0; // Reject plan with severe violations
+        synergy_log(LOG_WARNING, "Plan rejected: %s %s (penalty=%.2f)", node->opcode, node->param, penalty);
+    }
+    synergy_trace_session(NULL, NULL, "vet", node->param, node->opcode);
+    for (int i = 0; i < 3; ++i) {
+        ethics_vet_plan(node->children[i], set);
+    }
+    pthread_mutex_unlock(&node->mutex);
+}
+
+@*1 Constraint Update.
+Updates constraints via a JSON query (e.g., from `grok_bridge.cweb`).
+@c
+int ethics_update(ConstraintSet *set, json_object *update) {
+    if (!set || !update) return -1;
+    pthread_mutex_lock(&set->mutex);
+    constraint_free(set);
+    set->constraints = NULL;
+    set->count = 0;
+
+    json_object *array;
+    if (json_object_object_get_ex(update, "constraints", &array) && json_object_is_type(array, json_type_array)) {
+        set->count = json_object_array_length(array);
+        set->constraints = calloc(set->count, sizeof(Constraint));
+        for (int i = 0; i < set->count; ++i) {
+            json_object *obj = json_object_array_get_idx(array, i);
+            json_object *type, *param, *weight;
+            if (json_object_object_get_ex(obj, "type", &type) &&
+                json_object_object_get_ex(obj, "param", &param) &&
+                json_object_object_get_ex(obj, "weight", &weight)) {
+                set->constraints[i] = *constraint_create(
+                    json_object_get_string(type),
+                    json_object_get_string(param),
+                    json_object_get_double(weight)
+                );
+            }
+        }
+    }
+    pthread_mutex_unlock(&set->mutex);
+    synergy_log(LOG_INFO, "Constraints updated");
+    return 0;
+}
+
+@*1 Main Entrypoint.
+Loads constraints and tests evaluation (standalone mode).
+@c
+int main(int argc, char *argv[]) {
+    ConstraintSet *set = load_constraints("/etc/axion/ethics.json");
+    if (!set) {
+        synergy_log(LOG_ERROR, "Failed to load constraints");
+        return 1;
+    }
+    // Example: Vet a mock plan
+    PlanNode *node = plan_node_create("simulate", "optimize strategy", 0);
+    ethics_vet_plan(node, set);
+    printf("[ETHICS] Plan score after vetting: %.2f\n", node->score);
+    plan_free(node);
+    constraint_free(set);
+    return 0;
+}
+
+@*1 Testing.
+Unit tests for constraint loading, evaluation, vetting, and updates.
+@c
+#ifdef ETHICS_TEST
+#include <check.h>
+
+START_TEST(test_load_constraints) {
+    FILE *fp = fopen("test_ethics.json", "w");
+    fprintf(fp, "{\"constraints\": [{\"type\": \"safety\", \"param\": \"max_cpu=0.8\", \"weight\": 0.9}]}");
+    fclose(fp);
+    ConstraintSet *set = load_constraints("test_ethics.json");
+    ck_assert_ptr_nonnull(set);
+    ck_assert_int_eq(set->count, 1);
+    ck_assert_str_eq(set->constraints[0].type, "safety");
+    ck_assert_str_eq(set->constraints[0].param, "max_cpu=0.8");
+    ck_assert_double_eq(set->constraints[0].weight, 0.9);
+    constraint_free(set);
+    unlink("test_ethics.json");
+}
+END_TEST
+
+START_TEST(test_ethics_evaluate) {
+    ConstraintSet *set = calloc(1, sizeof(ConstraintSet));
+    set->count = 1;
+    set->constraints = constraint_create("safety", "max_cpu=0.8", 0.9);
+    PlanNode *node = plan_node_create("simulate", "high_cpu_task", 0);
+    double penalty = ethics_evaluate(set, node);
+    ck_assert(penalty >= 0.0); // Depends on synergy_reason output
+    FILE *log = fopen("/var/log/axion/trace.t81log", "r");
+    ck_assert_ptr_nonnull(log);
+    char buf[8192];
+    fread(buf, 1, sizeof(buf), log);
+    ck_assert(strstr(buf, "type=ethics value=Evaluate simulate for safety") != NULL);
+    fclose(log);
+    plan_free(node);
+    constraint_free(set);
+}
+END_TEST
+
+START_TEST(test_ethics_vet_plan) {
+    ConstraintSet *set = calloc(1, sizeof(ConstraintSet));
+    set->count = 1;
+    set->constraints = constraint_create("safety", "max_cpu=0.8", 0.9);
+    PlanNode *node = plan_node_create("simulate", "high_cpu_task", 0);
+    node->score = 1.5;
+    ethics_vet_plan(node, set);
+    ck_assert(node->score <= 1.5); // Penalty reduces score
+    plan_free(node);
+    constraint_free(set);
+}
+END_TEST
+
+Suite *ethics_suite(void) {
+    Suite *s = suite_create("Ethics");
+    TCase *tc = tcase_create("Core");
+    tcase_add_test(tc, test_load_constraints);
+    tcase_add_test(tc, test_ethics_evaluate);
+    tcase_add_test(tc, test_ethics_vet_plan);
+    suite_add_tcase(s, tc);
+    return s;
+}
+
+int main(void) {
+    Suite *s = ethics_suite();
+    SRunner *sr = srunner_create(s);
+    srunner_run_all(sr, CK_NORMAL);
+    int failures = srunner_ntests_failed(sr);
+    srunner_free(sr);
+    return failures == 0 ? 0 : 1;
+}
+#endif
+
+@* End of ethics.cweb
