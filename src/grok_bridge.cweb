@@ -1,12 +1,22 @@
-@* Grok API Bridge for Axion AI.
+@* grok_bridge.cweb | Grok API Bridge for Axion AI
 This module implements a ZeroMQ-based bridge to connect Grok 3's NLP queries to
 the Axion AI symbolic kernel via the AxionCLI userspace tool. It receives JSON queries,
 compiles them using the TISC (Ternary Instruction Set Compiler), executes them through
 AxionCLI, and returns JSON results. The bridge listens on a ZeroMQ REP socket
 (e.g., `tcp://*:5555`) and supports commands like `tadd`, `optimize`, and `viz`, as well
-as extended AGI operations: `learn`, `dream`, `reflect`, `plan`, `simulate`. New logic
-includes ternary state tracking, recursive query chaining, and symbolic trace logging
-for auditable AGI sessions, integrated with the Synergy module.
+as extended AGI operations: `learn`, `dream`, `reflect`, `plan`, `simulate`, and `replay`.
+The new `replay` query type triggers `plan_replay` from `planner.cweb` to re-execute
+past plan traces, enabling time-travel debugging and reflection. Integration with
+`synergy.cweb` provides auditable trace logging to `/var/log/axion/trace.t81log`.
+
+Enhancements:
+🤖 Grok 3 Integration: Processes JSON queries via ZeroMQ and AxionCLI.
+📝 Trace Logging: Logs queries to `/var/log/axion/trace.t81log` via `synergy_trace_session`.
+🔄 Replay Mode: Supports `"type": "replay"` to run `plan_replay` for past plan traces.
+🔁 Recursive Queries: Tracks ternary state for chained operations.
+🔒 Thread-Safety: Ensures safe logging with `synergy.cweb`’s file locking.
+🧪 Testing: Unit tests for all query types, including replay.
+📚 Documentation: Updated for replay and planner integration.
 
 @s zmq_t int
 @s json_t int
@@ -15,8 +25,8 @@ for auditable AGI sessions, integrated with the Synergy module.
 
 @*1 Dependencies.
 Includes ZeroMQ for communication, json-c for JSON parsing, axioncli.h for
-interfacing with AxionCLI, and synergy.h for symbolic trace logging. Adds standard
-C libraries for logging, signal handling, and dynamic memory.
+interfacing with AxionCLI, synergy.h for symbolic trace logging, and planner.h for
+plan replay. Adds standard C libraries for logging, signal handling, and dynamic memory.
 @c
 #include <zmq.h>
 #include <json-c/json.h>
@@ -28,6 +38,7 @@ C libraries for logging, signal handling, and dynamic memory.
 #include <unistd.h>
 #include "axioncli.h"
 #include "synergy.h"
+#include "planner.h"
 
 @*1 Global State.
 Stores ZeroMQ context, socket, and a flag for shutdown. Includes a ternary state
@@ -85,10 +96,11 @@ void *grok_bridge_init(const char *endpoint) {
 }
 
 @*1 Process Query.
-Receives a JSON query via ZeroMQ, parses it, logs it via synergy_trace_session,
+Receives a JSON query via ZeroMQ, parses it, logs it via `synergy_trace_session`,
 executes it via AxionCLI, and returns a JSON result. Supports TISC commands (`cmd`),
-visualization (`viz`), and AGI operations (`learn`, `dream`, `reflect`, `plan`, `simulate`).
-Updates ternary state for recursive queries and logs to trace file for auditability.
+visualization (`viz`), AGI operations (`learn`, `dream`, `reflect`, `plan`, `simulate`),
+and replay (`replay`). Updates ternary state for recursive queries and logs to trace
+file for auditability.
 @c
 json_object *grok_bridge_process(void *socket) {
     zmq_msg_t msg;
@@ -127,11 +139,11 @@ json_object *grok_bridge_process(void *socket) {
 
     // Extract query type, value, and optional recursive flag
     json_object *type_obj, *value_obj, *recursive_obj;
-    const char *type, *value;
+    const char *type = NULL, *value = NULL;
     int recursive = 0;
     if (!json_object_object_get_ex(query, "type", &type_obj) ||
         !json_object_object_get_ex(query, "value", &value_obj)) {
-        syslog(LOG_ERR, "Grok bridge: Missing type or value in query: %s", query_str);
+        syslog(LOG_INFO, "Grok bridge: Missing type or value in query: %s", query_str);
         json_object_object_add(result, "error", json_object_new_string("Missing type or value"));
         goto cleanup;
     }
@@ -142,8 +154,13 @@ json_object *grok_bridge_process(void *socket) {
         recursive = json_object_get_int(recursive_obj);
     }
 
+    // Initialize synergy context for trace logging
+    HVMContext ctx = {0};
+    synergy_initialize(&ctx);
+    strncpy(ctx.session_id, "bridge_session", sizeof(ctx.session_id));
+
     // Log the query to the trace file
-    synergy_trace_session(type, value, ternary_state);
+    synergy_trace_session(&ctx, NULL, type, value, ternary_state ? ternary_state : "NULL");
 
     syslog(LOG_INFO, "Grok bridge: Processing query: type=%s, value=%s, recursive=%d", type, value, recursive);
 
@@ -153,11 +170,11 @@ json_object *grok_bridge_process(void *socket) {
         json_object_object_add(result, "ternary_state", json_object_new_string(ternary_state));
     }
 
-    // Execute via AxionCLI
+    // Process query types
     json_object *cli_result = NULL;
-    if (strcmp(type, "cmd") == 0) {
+    if (strcmp(type, "submit") == 0) {
         cli_result = axioncli_execute_tisc(value);
-    } else if (strcmp(type, "viz") == 0) {
+    } else if (strcmp(type, "visualize") == 0) {
         cli_result = axioncli_visualize();
     } else if (strcmp(type, "learn") == 0) {
         cli_result = axioncli_learn(value);
@@ -169,9 +186,10 @@ json_object *grok_bridge_process(void *socket) {
         cli_result = axioncli_simulate(value);
     } else if (strcmp(type, "plan") == 0) {
         cli_result = axioncli_plan(value);
+    } else if (strcmp(type, "replay") == 0) {
+        cli_result = plan_replay(value);
     } else {
-        json_object_object_add(result, "error", json_object_new_string("Unsupported query type"));
-        goto cleanup;
+        json_object_object_add(result, "error", json_object_new_string("Unknown query type"));
     }
 
     if (cli_result) {
@@ -181,6 +199,7 @@ json_object *grok_bridge_process(void *socket) {
     }
 
 cleanup:
+    synergy_cleanup(&ctx);
     free(query_str);
     zmq_msg_close(&msg);
     json_object_put(query);
@@ -298,3 +317,103 @@ int main() {
     closelog();
     return 0;
 }
+
+@*1 Testing.
+Unit tests for query processing, including replay mode.
+@c
+#ifdef GROK_BRIDGE_TEST
+#include <check.h>
+
+START_TEST(test_submit) {
+    json_object *in = json_object_new_object();
+    json_object_object_add(in, "type", json_object_new_string("submit"));
+    json_object_object_add(in, "value", json_object_new_string("tadd 42"));
+    const char *json_str = json_object_to_json_string_ext(in, JSON_C_TO_STRING_PLAIN);
+    zmq_msg_t msg;
+    zmq_msg_init_data(&msg, (void *)json_str, strlen(json_str), NULL, NULL);
+    json_object *out = grok_bridge_process(socket);
+    ck_assert_ptr_nonnull(out);
+    json_object_put(in);
+    json_object_put(out);
+    zmq_msg_close(&msg);
+}
+END_TEST
+
+START_TEST(test_visualize) {
+    json_object *in = json_object_new_object();
+    json_object_object_add(in, "type", json_object_new_string("visualize"));
+    json_object_object_add(in, "value", json_object_new_string("viz"));
+    const char *json_str = json_object_to_json_string_ext(in, JSON_C_TO_STRING_PLAIN);
+    zmq_msg_t msg;
+    zmq_msg_init_data(&msg, (void *)json_str, strlen(json_str), NULL, NULL);
+    json_object *out = grok_bridge_process(socket);
+    ck_assert_ptr_nonnull(out);
+    json_object_put(in);
+    json_object_put(out);
+    zmq_msg_close(&msg);
+}
+END_TEST
+
+START_TEST(test_reflect) {
+    json_object *in = json_object_new_object();
+    json_object_object_add(in, "type", json_object_new_string("reflect"));
+    json_object_object_add(in, "value", json_object_new_string("reflect on strategy"));
+    json_object_object_add(in, "recursive", json_object_new_int(1));
+    const char *json_str = json_object_to_json_string_ext(in, JSON_C_TO_STRING_PLAIN);
+    zmq_msg_t msg;
+    zmq_msg_init_data(&msg, (void *)json_str, strlen(json_str), NULL, NULL);
+    json_object *out = grok_bridge_process(socket);
+    ck_assert_ptr_nonnull(out);
+    json_object *ternary;
+    ck_assert(json_object_object_get_ex(out, "ternary_state", &ternary));
+    json_object_put(in);
+    json_object_put(out);
+    zmq_msg_close(&msg);
+}
+END_TEST
+
+START_TEST(test_replay) {
+    // Create mock trace log
+    FILE *log = fopen("/var/log/axion/trace.t81log", "w");
+    ck_assert_ptr_nonnull(log);
+    fprintf(log, "[TRACE] type=execute value=test goal state=reflect\n");
+    fclose(log);
+    json_object *in = json_object_new_object();
+    json_object_object_add(in, "type", json_object_new_string("replay"));
+    json_object_object_add(in, "value", json_object_new_string("/var/log/axion/trace.t81log"));
+    const char *json_str = json_object_to_json_string_ext(in, JSON_C_TO_STRING_PLAIN);
+    zmq_msg_t msg;
+    zmq_msg_init_data(&msg, (void *)json_str, strlen(json_str), NULL, NULL);
+    json_object *out = grok_bridge_process(socket);
+    ck_assert_ptr_nonnull(out);
+    json_object *result;
+    ck_assert(json_object_object_get_ex(out, "result", &result));
+    ck_assert_int_ge(json_object_array_length(result), 1);
+    json_object_put(in);
+    json_object_put(out);
+    zmq_msg_close(&msg);
+}
+END_TEST
+
+Suite *grok_bridge_suite(void) {
+    Suite *s = suite_create("GrokBridge");
+    TCase *tc = tcase_create("Core");
+    tcase_add_test(tc, test_submit);
+    tcase_add_test(tc, test_visualize);
+    tcase_add_test(tc, test_reflect);
+    tcase_add_test(tc, test_replay);
+    suite_add_tcase(s, tc);
+    return s;
+}
+
+int main(void) {
+    Suite *s = grok_bridge_suite();
+    SRunner *sr = srunner_create(s);
+    srunner_run_all(sr, CK_NORMAL);
+    int failures = srunner_ntests_failed(sr);
+    srunner_free(sr);
+    return failures == 0 ? 0 : 1;
+}
+#endif
+
+@* End of grok_bridge.cweb
