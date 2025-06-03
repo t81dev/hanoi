@@ -1,0 +1,90 @@
+@* memory_trie.cweb | Symbolic Memory Trie for HanoiVM AGI
+This module implements a persistent ternary trie for storing and retrieving symbolic memory
+nodes across recursive AGI sessions. Each node contains timestamped symbolic data,
+entropy scoring, and semantic annotation, enabling deep memory lookup and reasoning.
+
+@s FILE int
+@s MemoryNode struct
+
+@*1 Includes and Data Structures.
+Includes standard libraries and defines the trie structure for symbolic memory.
+@c
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+
+typedef struct MemoryNode {
+    char timestamp[32];       // ISO timestamp
+    char type[16];            // reflect, dream, etc.
+    char state[256];          // symbolic ternary state
+    char semantic[512];       // semantic label or summary
+    double entropy;           // entropy score
+    struct MemoryNode *next[3]; // ternary branches
+} MemoryNode;
+
+@*1 Utility: Create Memory Node.
+Allocates and initializes a symbolic memory node.
+@c
+MemoryNode *memory_node_create(const char *type, const char *state, const char *semantic, double entropy) {
+    MemoryNode *node = calloc(1, sizeof(MemoryNode));
+    if (!node) return NULL;
+    time_t now = time(NULL);
+    strftime(node->timestamp, sizeof(node->timestamp), "%Y-%m-%dT%H:%M:%SZ", gmtime(&now));
+    strncpy(node->type, type, sizeof(node->type)-1);
+    strncpy(node->state, state, sizeof(node->state)-1);
+    strncpy(node->semantic, semantic, sizeof(node->semantic)-1);
+    node->entropy = entropy;
+    return node;
+}
+
+@*1 Insert into Trie.
+Recursively inserts a node into the ternary trie based on ternary state string.
+@c
+void memory_trie_insert(MemoryNode **root, const char *path, MemoryNode *node) {
+    if (!*root) *root = calloc(1, sizeof(MemoryNode));
+    if (!path || *path == '\0') return;
+
+    int index = path[0] - '0';
+    if (index < 0 || index > 2) return;
+
+    if (!(*root)->next[index])
+        (*root)->next[index] = calloc(1, sizeof(MemoryNode));
+
+    if (path[1] == '\0') {
+        memcpy((*root)->next[index], node, sizeof(MemoryNode));
+    } else {
+        memory_trie_insert(&((*root)->next[index]), path + 1, node);
+    }
+}
+
+@*1 Search Trie.
+Traverses the trie and finds node matching symbolic ternary address.
+@c
+MemoryNode *memory_trie_search(MemoryNode *root, const char *path) {
+    if (!root || !path || *path == '\0') return NULL;
+    int index = path[0] - '0';
+    if (index < 0 || index > 2) return NULL;
+    if (path[1] == '\0') return root->next[index];
+    return memory_trie_search(root->next[index], path + 1);
+}
+
+@*1 Free Trie.
+Recursively frees trie nodes.
+@c
+void memory_trie_free(MemoryNode *root) {
+    if (!root) return;
+    for (int i = 0; i < 3; i++) {
+        memory_trie_free(root->next[i]);
+    }
+    free(root);
+}
+
+@*1 Debug: Print Memory Node.
+Prints contents of a symbolic memory node.
+@c
+void memory_node_print(const MemoryNode *node) {
+    if (!node) return;
+    printf("[MEMORY]\nTime: %s\nType: %s\nState: %s\nEntropy: %.3f\nSemantic: %s\n",
+           node->timestamp, node->type, node->state, node->entropy, node->semantic);
+}
