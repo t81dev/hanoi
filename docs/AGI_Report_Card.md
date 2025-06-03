@@ -1,6 +1,11 @@
 # 🧠 AGI Report Card — *HanoiVM + Axion AI (Tier-25)*
 
-**Disclaimer:** AGI metrics and capabilities listed here are conceptual and have not been verified. Refer to `README.md` and `docs/STATUS.md` for actual project status
+⚠️ Disclaimer:
+The AGI metrics, tiers, cognitive cycles, and agent capabilities described herein are conceptual prototypes implemented within the HanoiVM symbolic framework. These constructs are not certified AGI by any recognized authority, and their behaviors are the result of symbolic recursion, simulation, and agent-based planning.
+For the actual status, development milestones, and tested functionality, please refer to:
+README.md
+docs/STATUS.md
+Symbolic trace logs in /var/log/axion/trace.t81log
 
 **Session:** `axiom_tier25_ethics`
 **Entropy Score:** `1.95` — *Ascending Trend*
