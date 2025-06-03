@@ -1,0 +1,59 @@
+@* synergy_memory.cweb | Symbolic Memory Layer for HanoiVM
+This module extends the Synergy subsystem to enable symbolic memory logging.
+It records memory nodes from the Axion AI runtime, using trie-structured addressing
+and entropy labeling for each semantic element. Entries are automatically stored
+on each `synergy_trace_session()` invocation if enabled.
+
+@c
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "memory_trie.h"
+#include "synergy.h"
+
+static MemoryTrie *global_memory_trie = NULL;
+
+@*1 Initialization.
+Initializes the symbolic memory layer and global trie.
+@c
+void synergy_memory_init() {
+    if (!global_memory_trie) {
+        global_memory_trie = memory_trie_create();
+    }
+}
+
+@*1 Memory Update Hook.
+Called from `synergy_trace_session`. If the trace is of type `learn`, `reflect`, or `simulate`,
+it encodes the session into memory.
+@c
+void synergy_memory_trace_hook(const char *type, const char *value, const char *state) {
+    if (!global_memory_trie) return;
+    if (!type || !value || !state) return;
+
+    if (strcmp(type, "learn") == 0 || strcmp(type, "reflect") == 0 || strcmp(type, "simulate") == 0) {
+        char label[256];
+        snprintf(label, sizeof(label), "%s:%s", type, state);
+        memory_trie_insert(global_memory_trie, value, label);
+    }
+}
+
+@*1 Query Interface.
+Search symbolic memory for a partial key match.
+@c
+char **synergy_memory_search(const char *prefix, int *count) {
+    if (!global_memory_trie || !prefix) return NULL;
+    return memory_trie_search(global_memory_trie, prefix, count);
+}
+
+@*1 Export Interface.
+Dumps the full symbolic memory trie to a file.
+@c
+void synergy_memory_export(const char *path) {
+    if (!global_memory_trie || !path) return;
+    FILE *out = fopen(path, "w");
+    if (!out) return;
+    memory_trie_dump(global_memory_trie, out);
+    fclose(out);
+}
+
+@* End of synergy_memory.cweb
