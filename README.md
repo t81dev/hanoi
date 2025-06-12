@@ -136,6 +136,9 @@ cat /sys/kernel/debug/hanoivm-test
 bazel run //:recursive_tier_execution -- --max-depth=36
 ```
 
+### 📥 Download
+Pre-built release archives can be found on the project's [GitHub releases page](../../releases).
+
 ---
 
 ## 🤖 Axion + GAIA Integration
