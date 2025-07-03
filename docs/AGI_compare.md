@@ -1,3 +1,4 @@
+---
 🤖 AGI_compare.md — Comparing AGI Architectures (HanoiVM vs Others)
 
 This document compares the HanoiVM + Axion AI system to other well-known AGI-related platforms, highlighting symbolic depth, memory, planning ability, and hardware orientation.
